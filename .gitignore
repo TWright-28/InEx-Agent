@@ -55,7 +55,7 @@ icsme2026/
 # Translations
 *.mo
 *.pot
-
+data/
 # Django stuff:
 *.log
 local_settings.py
