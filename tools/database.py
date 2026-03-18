@@ -5,7 +5,7 @@ import json
 
 class InExTool:
     def __init__(self, db_path):
-        self.connection = sqlite3.connect(db_path)
+        self.connection = sqlite3.connect(db_path, check_same_thread=False)
         self.cursor = self.connection.cursor()
         self._create_tables()
 
@@ -116,4 +116,9 @@ class InExTool:
         
         self.cursor.execute("SELECT id FROM classifications WHERE issue_id = ?", (issue_id,))
         return self.cursor.fetchone()[0]
+    
+    def get_stats(self):
+        self.cursor.execute("SELECT classification, COUNT(id) AS [Number of Classifications] FROM classifications GROUP BY classification")
+        return self.cursor.fetchall()
+
         
