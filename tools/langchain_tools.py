@@ -1,9 +1,12 @@
 from tools.database import InExTool
 from tools.collect import Collect
-from config import DB_PATH, GITHUB_TOKEN
+from tools.classify import Classify
+from config import DB_PATH, GITHUB_TOKEN, temperature, max_tokens, classifier, classifyPrompt
 from langchain.tools import tool
 
 db = InExTool(DB_PATH)
+cl = Classify(classifier, temperature, classifyPrompt)
+
 
 @tool('get_stats', description="Collect the stats about classification distributions from the database", return_direct=False)
 def get_stats() -> str:
@@ -18,3 +21,8 @@ def collect_all(repoName: str) -> str:
     owner, repo = repoName.split("/")
     collector = Collect(GITHUB_TOKEN)
     return collector.collectAll(owner, repo, db)
+
+@tool('classify_all', description="Classify all the issues from a github repo in our database and classify them")
+def classify_all(repoName: str) -> str: 
+    owner, repo = repoName.split("/")
+    return cl.classifyAll(owner, repo, db)
