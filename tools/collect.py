@@ -19,7 +19,7 @@ class Collect:
             return None
         return datetime.fromisoformat(s.replace("Z", "+00:00"))
 
-    def get(self, url, hdrs):
+    def get(self, url, hdrs= None):
         if hdrs is None:
             hdrs = self.headers
         while True:
