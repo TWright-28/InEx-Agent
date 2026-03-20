@@ -17,7 +17,8 @@ classifyPrompt = "prompts/classification_prompt.md"
 
 
 orchestrator = "gpt-oss:20B"
-classifier = "qwen3:30b"
+# classifier = "qwen3:30b"
+classifier = "qwen2.5:7b-instruct"
 
 temperature = 0.2
 max_tokens = 32000
