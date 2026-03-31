@@ -206,20 +206,3 @@ jobs:
               issue_number: issue.number,
               body: `${header}\n\n${reply}\n\n---\n${footer}`
             });
-```
-
-**What's different from before:**
-
-- **`issues: [opened, closed]`** — triggers on both events
-- **`isClosed` flag** — drives two completely different prompts and data payloads
-- **Fetches comments** on close — maps each with author association (`OWNER`, `MEMBER`, `COLLABORATOR`) so the model knows who's a maintainer
-- **Fetches closing PR** via timeline events — gets the PR title + body as context
-- **Full prompt on close** — includes maintainer signal + PR evidence sections, which are the strongest signals in your guide
-- **Shorter prompt on open** — lean, just what's available
-- Different comment headers so you can tell the two apart in the issue thread
-
-The flow on an issue will look like:
-```
-Issue opened  →  🤖 Initial AI Classification  (low context)
-... discussion happens ...
-Issue closed  →  🔒 Final AI Classification    (full context)
