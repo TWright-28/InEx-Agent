@@ -1,0 +1,225 @@
+name: AI Bug Classification
+
+on:
+  issues:
+    types: [opened, closed]  # ← add closed
+
+jobs:
+  classify:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+
+    steps:
+      - name: Classify issue with AI
+        uses: actions/github-script@v7
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const isClosed = issue.state === "closed";
+            const labels = issue.labels.map(l => l.name).join(", ") || "None";
+            const authorRole = context.payload.sender.type;
+
+            // ── Fetch comments if issue is closed ──────────────────────────
+            let commentsBlock = "";
+            let closingPRBlock = "";
+
+            if (isClosed) {
+              // Get all comments on the issue
+              const comments = await github.rest.issues.listComments({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                per_page: 50
+              });
+
+              if (comments.data.length > 0) {
+                commentsBlock = comments.data.map(c =>
+                  `- [${c.author_association}] ${c.user.login}: ${c.body}`
+                ).join("\n");
+              }
+
+              // Look for linked closing PR via timeline events
+              const timeline = await github.rest.issues.listEventsForTimeline({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                per_page: 50,
+                mediaType: { previews: ["mockingbird"] }
+              });
+
+              const closingPR = timeline.data.find(e =>
+                e.event === "cross-referenced" &&
+                e.source?.issue?.pull_request &&
+                e.source?.issue?.state === "closed"
+              );
+
+              if (closingPR) {
+                const pr = closingPR.source.issue;
+                closingPRBlock = `**Closing PR:** #${pr.number} - "${pr.title}"\nPR Body: ${pr.body?.slice(0, 500) || "No description"}`;
+              }
+            }
+
+            // ── Build system prompt based on context ───────────────────────
+            const systemPrompt = isClosed
+              ? `# BUG CLASSIFICATION GUIDE
+
+            Classify this CLOSED GitHub issue into: Intrinsic, Extrinsic, or Not a Bug.
+            You have full context: title, description, labels, maintainer comments, and closing PR.
+            Use all available signals. Maintainer comments and closing PRs are the strongest signals.
+
+            # DEFINITIONS
+
+            ## INTRINSIC - Root cause is inside this repository.
+            Fix requires modifying production code in this repo.
+            Includes: Logic/validation/flow errors, missing null checks, incorrect async usage,
+            SQL/migrations wrong, regressions from our own commits, misusing a dependency relative
+            to its contract, incorrect package.json fields.
+
+            ## EXTRINSIC - Root cause is outside this repository.
+            The repo must adapt to an external change.
+            Includes: Dependency/Node/browser/toolchain upgrades causing breaking changes,
+            upstream API deprecations, Node/V8/ESM behavior changes, build toolchain updates,
+            issues with no code changes except version bumps.
+
+            ## NOT A BUG - Not a defect in this repo's production code.
+            Includes: Test failures/CI issues, documentation issues, usage questions,
+            feature requests, user misuse/invalid environment, missing peer dependencies,
+            unsupported platforms, failures in user's own code, duplicates.
+
+            # KEY DECISION RULES
+
+            - **Maintainer comments are the strongest signal** — owners/members/collaborators state the real cause
+            - **Closing PR = strong evidence of real bug** — classify Intrinsic vs Extrinsic based on what it fixed
+            - **Temporal signals → Extrinsic**: "after upgrading", "since version X", "works on X fails on Y"
+            - **Contract Rule**: If WE misuse an external API → Intrinsic. If THEY changed the API → Extrinsic
+            - **Intrinsic Evidence Gate**: Only choose Intrinsic if defect clearly originates in this repo's logic
+            - **Content > Labels**: Always trust content over labels
+            - **Questions/docs/features** → Always Not a Bug
+
+            # REASONING FORMAT
+
+            **Reasoning:**
+            **Definition Check** - Which category definitions match the signals?
+            **Maintainer Signal** - What do maintainer comments say about root cause?
+            **PR/Commit Evidence** - What did the closing PR change and why?
+            **Temporal Signals** - Any version changes, upgrades, "works on X fails on Y"?
+            **Contract Rule** - Who violated the contract: us or them?
+            **Information Completeness** - Was there enough detail to classify confidently?
+
+            **Probability Distribution:**
+            - Intrinsic: 0.XX
+            - Extrinsic: 0.XX
+            - Not a Bug: 0.XX
+
+            **Final Answer:** [Intrinsic / Extrinsic / Not a Bug]`
+
+              : `# BUG CLASSIFICATION GUIDE
+
+            Classify this NEW GitHub issue into: Intrinsic, Extrinsic, or Not a Bug.
+            Note: No maintainer comments or closing PR exist yet. Classify on title, description, and labels only.
+
+            # DEFINITIONS
+
+            ## INTRINSIC - Root cause is inside this repository.
+            ## EXTRINSIC - Root cause is outside this repository (dependency/runtime/toolchain change).
+            ## NOT A BUG - Not a defect in this repo's production code (questions, docs, feature requests, test issues, user misuse).
+
+            # KEY RULES
+            - Temporal signals → Extrinsic: "after upgrading", "since version X", "works on X fails on Y"
+            - Contract Rule: WE misuse API → Intrinsic. THEY changed API → Extrinsic
+            - Questions/docs/features → Always Not a Bug
+            - If too vague → Low confidence, spread probabilities
+
+            # REASONING FORMAT
+
+            **Reasoning:**
+            **Definition Check** - Which category fits?
+            **Temporal Signals** - Any upgrade/version signals?
+            **Contract Rule** - Who violated the contract?
+            **Information Completeness** - Enough detail to classify?
+
+            **Probability Distribution:**
+            - Intrinsic: 0.XX
+            - Extrinsic: 0.XX
+            - Not a Bug: 0.XX
+
+            **Final Answer:** [Intrinsic / Extrinsic / Not a Bug]`;
+
+            // ── Build user prompt ──────────────────────────────────────────
+            const userPrompt = isClosed
+              ? `Please classify this closed GitHub issue:
+
+            **Title:** ${issue.title}
+            **Author Role:** ${authorRole}
+            **Labels:** ${labels}
+            **Description:**
+            ${issue.body || "No description provided."}
+
+            **Comments:**
+            ${commentsBlock || "None"}
+
+            ${closingPRBlock || "**Closing PR:** None found"}
+            `
+              : `Please classify this new GitHub issue:
+
+            **Title:** ${issue.title}
+            **Author Role:** ${authorRole}
+            **Labels:** ${labels}
+            **Description:**
+            ${issue.body || "No description provided."}`;
+
+            // ── Call Groq ──────────────────────────────────────────────────
+            const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({
+                model: "llama-3.3-70b-versatile",
+                messages: [
+                  { role: "system", content: systemPrompt },
+                  { role: "user", content: userPrompt }
+                ],
+                max_tokens: 700,
+                temperature: 0.1
+              })
+            });
+
+            const data = await res.json();
+            const reply = data.choices[0].message.content;
+
+            const header = isClosed
+              ? "### 🔒 Final AI Classification (Issue Closed)"
+              : "### 🤖 Initial AI Classification (New Issue)";
+
+            const footer = isClosed
+              ? "*Final classification using full context: comments + closing PR.*"
+              : "*Initial classification — will re-run with full context when issue is closed.*";
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: `${header}\n\n${reply}\n\n---\n${footer}`
+            });
+```
+
+**What's different from before:**
+
+- **`issues: [opened, closed]`** — triggers on both events
+- **`isClosed` flag** — drives two completely different prompts and data payloads
+- **Fetches comments** on close — maps each with author association (`OWNER`, `MEMBER`, `COLLABORATOR`) so the model knows who's a maintainer
+- **Fetches closing PR** via timeline events — gets the PR title + body as context
+- **Full prompt on close** — includes maintainer signal + PR evidence sections, which are the strongest signals in your guide
+- **Shorter prompt on open** — lean, just what's available
+- Different comment headers so you can tell the two apart in the issue thread
+
+The flow on an issue will look like:
+```
+Issue opened  →  🤖 Initial AI Classification  (low context)
+... discussion happens ...
+Issue closed  →  🔒 Final AI Classification    (full context)
