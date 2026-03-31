@@ -193,8 +193,8 @@ jobs:
             const reply = data.choices[0].message.content;
 
             const header = isClosed
-              ? "### 🔒 Final AI Classification (Issue Closed)"
-              : "### 🤖 Initial AI Classification (New Issue)";
+              ? "###  Final AI Classification (Issue Closed)"
+              : "###  Initial AI Classification (New Issue)";
 
             const footer = isClosed
               ? "*Final classification using full context: comments + closing PR.*"
