@@ -2,6 +2,12 @@ from langchain_ollama import ChatOllama
 from config import orchestrator, temperature
 from langchain.agents import create_agent
 from tools.langchain_tools import get_stats, collect_all, classify_all
+import logging
+import logging.config
+import json
+
+with open("logging_config.json") as f:
+    logging.config.dictConfig(json.load(f))
 
 llm = ChatOllama(
     model= orchestrator,
