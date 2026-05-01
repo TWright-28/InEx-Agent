@@ -230,7 +230,7 @@ class Classify:
                 "classification_raw_response": response,
             }, 
                 model = self.model_config["model_name"],
-                prompt= self.base_prompt,
+                prompt= self.prompt_path,
                 temp =self.model_config["temperature"],
                 classifiedat= datetime.now().isoformat(), 
             )
