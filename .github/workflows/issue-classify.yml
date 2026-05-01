@@ -179,11 +179,7 @@ jobs:
                 "Content-Type": "application/json"
               },
               body: JSON.stringify({
-<<<<<<< HEAD
                 model: "qwen/qwen3-32b",
-=======
-                model: "qwen3-32b",
->>>>>>> 5b48409691bc3fae7864989c170c1240e8fafdf5
                 messages: [
                   { role: "system", content: systemPrompt },
                   { role: "user", content: userPrompt }
