@@ -106,12 +106,12 @@ class Classify:
             prMerged = closingPr.get('merged', False)
 
             prDetails = f"""
-    **Closing PR Details:**
-    - Title: {prTitle}
-    - Merged: {prMerged}
-    - Files Changed: {prFiles}
-    - Body: {prBody[:15000] if prBody else 'No description'}{'...' if prBody and len(prBody) > 15000 else ''}
-    """
+**Closing PR Details:**
+- Title: {prTitle}
+- Merged: {prMerged}
+- Files Changed: {prFiles}
+- Body: {prBody[:15000] if prBody else 'No description'}{'...' if prBody and len(prBody) > 15000 else ''}
+"""
 
         commitDetails = ""
         if closingCommit:
@@ -146,47 +146,41 @@ class Classify:
         if len(body) > 80000:
             body = body[:80000] + "\n\n[..truncated for length..]"
 
-        return f"""---
-    ## Issue Data to Classify
+        return f"""
+## Issue Data to Classify
 
-    **Project:** {project}
-    **Issue Number:** #{issue.get('number', 'Unknown')}
-    **Title:** {title}
+**Project:** {project}
+**Issue Number:** #{issue.get('number', 'Unknown')}
+**Title:** {title}
+**Author:** {authorName} (Role: {authorRole})
+**Labels:** {labelsStr}
+**Created:** {createdAt}
+**Closed:** {closedAt}
+**Closed By:** {closedBy}
+**Issue Body:**
+{body}
+{prDetails}{commitDetails}
+**Comments & Discussion:** 
+{commentsStr}
+---
+## Your Task
 
-    **Author:** {authorName} (Role: {authorRole})
-    **Labels:** {labelsStr}
-    **Created:** {createdAt}
-    **Closed:** {closedAt}
-    **Closed By:** {closedBy}
+Analyze this issue using the classification guide and reasoning framework provided above.
+You must use this structure in your response:
 
-    **Issue Body:**
-    {body}
-    {prDetails}{commitDetails}
+**Reasoning:**
+**Definition Check** - Identify which category definitions match the signals
+**Maintainer Signal** - Note any authoritative maintainer comments about root cause
+**PR/Commit Evidence** - If closing PR exists, describe what it changed and why
+**Temporal Signals** - Check for version changes, upgrades, "works on X fails on Y" patterns
+**Contract Rule** - If API usage involved, determine who violated the contract
+**Information Completeness** - Assess if there's enough detail to classify confidently
+**Decision** - State your classification and the primary evidence supporting it
+**Confidence:** High/Medium/Low
+**Final Answer:** [One of: Intrinsic / Extrinsic / Not a Bug / Unknown]
 
-    **Comments & Discussion:**
-    {commentsStr}
-
-    ---
-
-    ## Your Task
-
-    Analyze this issue using the classification guide and reasoning framework provided above.
-    You must use this structure in your response:
-
-    **Reasoning:**
-    **Definition Check** - Identify which category definitions match the signals
-    **Maintainer Signal** - Note any authoritative maintainer comments about root cause
-    **PR/Commit Evidence** - If closing PR exists, describe what it changed and why
-    **Temporal Signals** - Check for version changes, upgrades, "works on X fails on Y" patterns
-    **Contract Rule** - If API usage involved, determine who violated the contract
-    **Information Completeness** - Assess if there's enough detail to classify confidently
-    **Decision** - State your classification and the primary evidence supporting it
-    **Confidence:** High/Medium/Low
-
-    **Final Answer:** [One of: Intrinsic / Extrinsic / Not a Bug / Unknown]
-
-    DO NOT REPEAT RAW FILE PATHS OR FULL STACK TRACE OUTPUTS.
-    """
+DO NOT REPEAT RAW FILE PATHS OR FULL STACK TRACE OUTPUTS.
+"""
 
     def classifyAll(self, owner, repo, db):
         db.cursor.execute("SELECT id from projects where owner = ? and repo = ?", (owner, repo))
