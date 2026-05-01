@@ -49,6 +49,7 @@ class InExTool:
             temperature REAL, 
             classified_at TEXT, 
             FOREIGN KEY (issue_id) REFERENCES issues(id)
+            UNIQUE(issue_id, model, prompt_version, temperature)
         )""")
         
         self.connection.commit()
@@ -106,7 +107,7 @@ class InExTool:
         probabilites = json.dumps(classification_data.get("classification_probabilities"))
         classification_raw = classification_data.get("classification_raw_response")
         
-        self.cursor.execute("INSERT INTO classifications(issue_id, classification, classification_probabilities, classification_raw_response, model, prompt_version, temperature, classified_at) VALUES(?,?,?,?,?, ?, ? ,? )", (issue_id, classification, probabilites, classification_raw, model, prompt, temp, classifiedat))
+        self.cursor.execute("INSERT OR REPLACE INTO classifications(issue_id, classification, classification_probabilities, classification_raw_response, model, prompt_version, temperature, classified_at) VALUES(?,?,?,?,?, ?, ? ,? )", (issue_id, classification, probabilites, classification_raw, model, prompt, temp, classifiedat))
         
         self.connection.commit()
         
