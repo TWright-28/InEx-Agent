@@ -1,5 +1,5 @@
 import sqlite3
-from config import DB_PATH, classifier, temperature, max_tokens, classifyPrompt
+from config import DB_PATH
 from datetime import datetime
 import json 
 
@@ -101,16 +101,12 @@ class InExTool:
         )
         return self.cursor.fetchone()[0]
         
-    def save_classification(self, issue_id, classification_data):
+    def save_classification(self, issue_id, classification_data, model, prompt, temp, classifiedat):
         classification = classification_data.get("classification")
         probabilites = json.dumps(classification_data.get("classification_probabilities"))
         classification_raw = classification_data.get("classification_raw_response")
-        model = classifier
-        prompt_version = classifyPrompt
-        ctemperature = temperature
-        classified_at = datetime.now().isoformat()
         
-        self.cursor.execute("INSERT INTO classifications(issue_id, classification, classification_probabilities, classification_raw_response, model, prompt_version, temperature, classified_at) VALUES(?,?,?,?,?, ?, ? ,? )", (issue_id, classification, probabilites, classification_raw, model, prompt_version, ctemperature, classified_at))
+        self.cursor.execute("INSERT INTO classifications(issue_id, classification, classification_probabilities, classification_raw_response, model, prompt_version, temperature, classified_at) VALUES(?,?,?,?,?, ?, ? ,? )", (issue_id, classification, probabilites, classification_raw, model, prompt, temp, classifiedat))
         
         self.connection.commit()
         

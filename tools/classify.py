@@ -225,6 +225,11 @@ class Classify:
                 "classification": label,
                 "classification_probabilities": probs,
                 "classification_raw_response": response,
+                "model": self.model_config["model"],
+                "prompt_version": self.base_prompt,
+                "temperature": self.model_config["temperature"],
+                "classified_at": datetime.now().isoformat(), 
+                
             })
             classified += 1
 
