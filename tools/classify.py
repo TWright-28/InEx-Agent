@@ -2,6 +2,7 @@ import json, re
 from pathlib import Path
 import requests
 import argparse
+from datetime import datetime
 
 class Classify:
     
@@ -14,7 +15,8 @@ class Classify:
             }
         self.Labels = ["Intrinsic", "Extrinsic", "Not a Bug", "Unknown"]
         self.LABEL_MAP = {l.lower(): l for l in self.Labels}
-            
+        self.prompt_path = promptPath
+
         with open(promptPath, 'r', encoding='utf-8') as f:
             self.base_prompt = f.read().strip()
 
@@ -221,16 +223,18 @@ class Classify:
             label = self.extractLabel(response) or "Unknown"
             probs = self.extractProbabilities(response) or {}
 
-            db.save_classification(issue_id, {
+            db.save_classification(issue_id, 
+            {
                 "classification": label,
                 "classification_probabilities": probs,
                 "classification_raw_response": response,
-                "model": self.model_config["model"],
-                "prompt_version": self.base_prompt,
-                "temperature": self.model_config["temperature"],
-                "classified_at": datetime.now().isoformat(), 
-                
-            })
+            }, 
+                model = self.model_config["model_name"],
+                prompt= self.base_prompt,
+                temp =self.model_config["temperature"],
+                classifiedat= datetime.now().isoformat(), 
+            )
+            
             classified += 1
 
         return f"Classified {classified} issues from {owner}/{repo}."
