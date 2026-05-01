@@ -3,7 +3,7 @@ from pathlib import Path
 import requests
 import argparse
 from datetime import datetime
-
+import logging 
 class Classify:
     
     def __init__(self, model, temperature, promptPath):
