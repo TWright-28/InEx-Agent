@@ -179,13 +179,13 @@ jobs:
                 "Content-Type": "application/json"
               },
               body: JSON.stringify({
-                model: "llama-3.3-70b-versatile",
+                model: "qwen3-32b",
                 messages: [
                   { role: "system", content: systemPrompt },
                   { role: "user", content: userPrompt }
                 ],
                 max_tokens: 700,
-                temperature: 0.1
+                temperature: 0.2
               })
             });
 
