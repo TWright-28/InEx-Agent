@@ -122,7 +122,7 @@ class Classify:
 
         for comment in commentsList:
             _, commentRole = self.getAuthorInfo(comment)
-            if commentRole in ['OWNER', 'MEMBER', 'COLLABORATOR', 'COLLABORATOR']:
+            if commentRole in ['OWNER', 'MEMBER', 'COLLABORATOR', 'CONTRIBUTOR']:
                 maintainerComments.append(comment)
             else:
                 regularComments.append(comment)
