@@ -93,11 +93,11 @@ jobs:
 
             - **Maintainer comments are the strongest signal** — owners/members/collaborators state the real cause
             - **Closing PR = strong evidence of real bug** — classify Intrinsic vs Extrinsic based on what it fixed
-            - **Temporal signals → Extrinsic**: "after upgrading", "since version X", "works on X fails on Y"
-            - **Contract Rule**: If WE misuse an external API → Intrinsic. If THEY changed the API → Extrinsic
+            - **Temporal signals -> Extrinsic**: "after upgrading", "since version X", "works on X fails on Y"
+            - **Contract Rule**: If WE misuse an external API -> Intrinsic. If THEY changed the API -> Extrinsic
             - **Intrinsic Evidence Gate**: Only choose Intrinsic if defect clearly originates in this repo's logic
             - **Content > Labels**: Always trust content over labels
-            - **Questions/docs/features** → Always Not a Bug
+            - **Questions/docs/features** -> Always Not a Bug
 
             # REASONING FORMAT
 
@@ -128,10 +128,10 @@ jobs:
             ## NOT A BUG - Not a defect in this repo's production code (questions, docs, feature requests, test issues, user misuse).
 
             # KEY RULES
-            - Temporal signals → Extrinsic: "after upgrading", "since version X", "works on X fails on Y"
-            - Contract Rule: WE misuse API → Intrinsic. THEY changed API → Extrinsic
-            - Questions/docs/features → Always Not a Bug
-            - If too vague → Low confidence, spread probabilities
+            - Temporal signals -> Extrinsic: "after upgrading", "since version X", "works on X fails on Y"
+            - Contract Rule: WE misuse API -> Intrinsic. THEY changed API -> Extrinsic
+            - Questions/docs/features -> Always Not a Bug
+            - If too vague -> Low confidence, spread probabilities
 
             # REASONING FORMAT
 
@@ -179,7 +179,7 @@ jobs:
                 "Content-Type": "application/json"
               },
               body: JSON.stringify({
-                model: "llama-3.3-70b-versatile",
+                model: "qwen/qwen3-32b",
                 messages: [
                   { role: "system", content: systemPrompt },
                   { role: "user", content: userPrompt }
