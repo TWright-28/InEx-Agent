@@ -186,6 +186,9 @@ DO NOT REPEAT RAW FILE PATHS OR FULL STACK TRACE OUTPUTS.
 """
 
     def classifyAll(self, owner, repo, db):
+        
+        logger.info("Starting classification for %s/%s", owner, repo)
+
         db.cursor.execute("SELECT id from projects where owner = ? and repo = ?", (owner, repo))
         row = db.cursor.fetchone()
         if not row: 
@@ -217,8 +220,18 @@ DO NOT REPEAT RAW FILE PATHS OR FULL STACK TRACE OUTPUTS.
             logger.info("Classifying #%d: %s", number, title[:60])
 
             response = self.callOllama(self.base_prompt + "\n" + self.formatIssueData(issue), self.model_config)
-            label = self.extractLabel(response) or "Unknown"
-            probs = self.extractProbabilities(response) or {}
+            label = self.extractLabel(response) 
+            if label is None:
+                logger.warning("Unable to classify #%d: %s", number, title[:60])
+                label = "Unknown"
+
+
+            probs = self.extractProbabilities(response)
+
+            if probs is None: 
+                logger.warning("Unable to extract probabilities for #%d: %s", number, title[:60])
+                probs = {}
+
 
             db.save_classification(issue_id, 
             {
@@ -233,7 +246,8 @@ DO NOT REPEAT RAW FILE PATHS OR FULL STACK TRACE OUTPUTS.
             )
             
             classified += 1
-
+            
+        logger.info("Finished classification for %s/%s: %d issues classified", owner, repo, classified)
         return f"Classified {classified} issues from {owner}/{repo}."
         
 
