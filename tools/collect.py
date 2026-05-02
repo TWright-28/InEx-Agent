@@ -5,6 +5,8 @@ import time
 import requests
 from datetime import datetime, timezone
 from config import GITHUB_TOKEN
+import logging
+logger = logging.getLogger(__name__)
 
 class Collect: 
     def __init__(self, token):
@@ -26,7 +28,9 @@ class Collect:
             r = requests.get(url, headers=hdrs, timeout=30)
             if r.status_code == 403 and r.headers.get("X-RateLimit-Remaining") == "0":
                 reset = int(r.headers.get("X-RateLimit-Reset", 0))
-                time.sleep(max(0, reset - int(time.time()) + 1))
+                wait = max(0, reset - int(time.time()) + 1)
+                logger.warning("Github Rate limit reached, sleeping for %d seconds", wait)
+                time.sleep(wait)
                 continue
             r.raise_for_status()
             return r
@@ -425,6 +429,7 @@ class Collect:
         }
 
     def collectAll(self, owner, repo, db, max_issues=None):
+        logger.info("Starting collection for %s\%s", owner, repo)
         projectId = db.save_project(owner, repo)
         collected = 0
         skipped = 0
@@ -453,7 +458,7 @@ class Collect:
                 collected +=1
                 
                 if collected % 10 == 0:
-                    print(f"  Collected {collected} issues (skipped {skipped})...")
+                    logger.info(f"  Collected {collected} issues (skipped {skipped})...")
 
                 if max_issues and collected >= max_issues:
                     return f"Collected {collected} issues from {owner}/{repo} (skipped {skipped} already in DB)."
@@ -462,4 +467,5 @@ class Collect:
                 break
             pg += 1
 
+        logger.info("Finished collection for %s/%s: %d collected, %d skipped", owner, repo, collected, skipped)
         return f"Collected {collected} issues from {owner}/{repo} (skipped {skipped} already in DB)."

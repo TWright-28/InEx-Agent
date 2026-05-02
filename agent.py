@@ -6,7 +6,7 @@ import logging
 import logging.config
 import json
 
-with open("logging_config.json") as f:
+with open("loggingConfigs/config.json") as f:
     logging.config.dictConfig(json.load(f))
 
 llm = ChatOllama(

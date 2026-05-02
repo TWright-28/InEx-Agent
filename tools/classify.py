@@ -3,7 +3,10 @@ from pathlib import Path
 import requests
 import argparse
 from datetime import datetime
-import logging 
+import logging
+logger = logging.getLogger(__name__)
+
+
 class Classify:
     
     def __init__(self, model, temperature, promptPath):
@@ -211,7 +214,7 @@ DO NOT REPEAT RAW FILE PATHS OR FULL STACK TRACE OUTPUTS.
                 **raw_data
             }
 
-            print(f"  Classifying #{number}: {title[:60]}...")
+            logger.info("Classifying #%d: %s", number, title[:60])
 
             response = self.callOllama(self.base_prompt + "\n" + self.formatIssueData(issue), self.model_config)
             label = self.extractLabel(response) or "Unknown"
