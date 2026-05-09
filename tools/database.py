@@ -48,7 +48,7 @@ class InExTool:
             prompt_version TEXT, 
             temperature REAL, 
             classified_at TEXT, 
-            FOREIGN KEY (issue_id) REFERENCES issues(id)
+            FOREIGN KEY (issue_id) REFERENCES issues(id),
             UNIQUE(issue_id, model, prompt_version, temperature)
         )""")
         
