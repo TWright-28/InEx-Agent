@@ -14,7 +14,7 @@ OLLAMA_BASE = "http://localhost:11434"
 
 promptsDir = "prompts/"
 classifyPrompt = "prompts/classification_prompt.md"
-
+systemPrompt = "prompts/system_prompt.md"
 
 orchestrator = "gpt-oss:20B"
 # classifier = "qwen3:30b"

@@ -1,7 +1,7 @@
 from langchain_ollama import ChatOllama
-from config import orchestrator, temperature
+from config import orchestrator, temperature, systemPrompt
 from langchain.agents import create_agent
-from tools.langchain_tools import get_stats, collect_all, classify_all
+from tools.langchain_tools import get_stats, collect_all, classify_all, count_issues
 from langgraph.checkpoint.sqlite import SqliteSaver
 import logging
 import logging.config
@@ -13,7 +13,9 @@ from langgraph.types import Command
 
 with open("loggingConfigs/config.json") as f:
     logging.config.dictConfig(json.load(f))
-
+    
+with open(systemPrompt, "r", encoding="utf-8") as f:
+    system_prompt = f.read()
 
 llm = ChatOllama(
     model= orchestrator, 
@@ -28,7 +30,7 @@ checkpointer = SqliteSaver(checkpoint_conn)
 
 agent = create_agent(
     model=llm,
-    tools= [get_stats, collect_all, classify_all],
+    tools= [get_stats, collect_all, count_issues, classify_all],
     system_prompt="You are a helpful assistant for analyzing and classifying GitHub bug reports.  You can query a database of classified bug reports from open source projects, you can also collect bug reports from a github repository and classify bug reports",
     checkpointer= checkpointer,
 ) 
@@ -38,18 +40,12 @@ config = {"configurable": {"thread_id": thread_id}}
 
 print(f"InEx Bug Agent - Thread {thread_id[:8]} - type 'q' to quit")
 
-while True:
+while True: 
     q = input("You: ")
-    if q == "q":
+    if q=="q":
         break
     inputs = {"messages": [{"role": "user", "content": q}]}
     results = agent.invoke(inputs, config=config)
-    
-    while results.get("__interrupt__"):
-        interrupt_data = results["__interrupt__"][0].value
-        print(f"\n{interrupt_data['message']}")
-        answer = input("> ")
-        results = agent.invoke(Command(resume=answer), config=config)
     
     print(f"Agent: {results['messages'][-1].content}")
     

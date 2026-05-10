@@ -3,7 +3,6 @@ from tools.collect import Collect
 from tools.classify import Classify
 from config import DB_PATH, GITHUB_TOKEN, temperature, max_tokens, classifier, classifyPrompt
 from langchain.tools import tool
-from langgraph.types import interrupt
 db = InExTool(DB_PATH)
 cl = Classify(classifier, temperature, classifyPrompt)
 
@@ -17,22 +16,19 @@ def get_stats() -> str:
         output += f"{label}: {count}\n"
     return output
 
+@tool('count_issues', description="Count the total number of issues from a github repo without collecting them. Use this before Collect_all to check if the repo is large. Input should be owner/repo. Note: counts above 1000 are reported as '1000+' due to GitHub API limits.")
+def count_issues(repoName: str) -> str:
+    owner, repo = repoName.split("/")
+    collector = Collect(GITHUB_TOKEN)
+    count = collector.countIssues(owner, repo)
+    if count >= 1000: 
+        return f"{owner}/{repo} has 1000+ issues (exact count unavailable due to GitHub API limit)."
+    return f"{owner}/{repo} has {count} issues."
+
 @tool('collect_all', description="Collect all the issues from a github repo and save to the database, Input should be in owner/repo format")
 def collect_all(repoName: str) -> str: 
     owner, repo = repoName.split("/")
     collector = Collect(GITHUB_TOKEN)
-    count = collector.countIssues(owner, repo)
-    
-    if count >= ISSUE_THRESHOLD:
-        answer = interrupt({
-            "message": f"{owner}/{repo} has {count}{'+' if count >= 1000 else ''} issues. This will take a while. Proceed? (y/n)",
-            "owner": owner,
-            "repo": repo,
-            "count": count,
-        })
-    if str(answer).strip().lower() not in ("y", "yes"):
-        return f"Collection cancelled for {owner}/{repo}."
-    
     return collector.collectAll(owner, repo, db)
 
 @tool('classify_all', description="Classify all the issues from a github repo in our database and classify them")
