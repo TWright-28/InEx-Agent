@@ -27,12 +27,12 @@ checkpointer = SqliteSaver(checkpoint_conn)
 
 agent = create_agent(
     model=llm,
-    tools= [get_stats],
+    tools= [get_stats, collect_all, classify_all],
     system_prompt="You are a helpful assistant for analyzing and classifying GitHub bug reports.  You can query a database of classified bug reports from open source projects, you can also collect bug reports from a github repository and classify bug reports",
     checkpointer= checkpointer,
 ) 
-thread_id = uuid.uuid4()
-config = {"configureable": {"thread_id": thread_id}}
+thread_id = str(uuid.uuid4())
+config = {"configurable": {"thread_id": thread_id}}
 
 
 print(f"InEx Bug Agent - Thread {thread_id[:8]} - type 'q' to quit")
