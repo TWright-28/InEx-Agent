@@ -34,10 +34,24 @@ agent = create_agent(
     system_prompt="You are a helpful assistant for analyzing and classifying GitHub bug reports.  You can query a database of classified bug reports from open source projects, you can also collect bug reports from a github repository and classify bug reports",
     checkpointer= checkpointer,
 ) 
-thread_id = str(uuid.uuid4())
+LAST_THREAD_FILE = "db/last_thread.txt"
+
+thread_id = None
+if os.path.exists(LAST_THREAD_FILE):
+    with open(LAST_THREAD_FILE, "r") as f:
+        previous = f.read().strip()
+    if previous:
+        answer = input(f"Resume previous session [{previous[:8]}]? (y/n): ").strip().lower()
+        if answer in ("y", "yes"):
+            thread_id = previous
+
+if thread_id is None:
+    thread_id = str(uuid.uuid4())
+
+with open(LAST_THREAD_FILE, "w") as f:
+    f.write(thread_id)
+
 config = {"configurable": {"thread_id": thread_id}}
-
-
 print(f"InEx Bug Agent - Thread {thread_id[:8]} - type 'q' to quit")
 
 while True: 
