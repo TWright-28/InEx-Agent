@@ -15,6 +15,12 @@ class Collect:
             "Authorization": f"Bearer {token}",
             "Accept": "application/vnd.github+json"
         }
+    
+    def countIssues(self, owner, repo):
+        url = f"https://api.github.com/search/issues?q=repo:{owner}/{repo}+is:issue&per_page=1"
+        data = self.get(url).json()
+        return data.get("total_count", 0)
+     
         
     def parseTs(self, s):
         if not s:
