@@ -9,6 +9,7 @@ import json
 import os
 import uuid
 import sqlite3
+from langgraph.types import Command
 
 with open("loggingConfigs/config.json") as f:
     logging.config.dictConfig(json.load(f))
@@ -37,12 +38,18 @@ config = {"configurable": {"thread_id": thread_id}}
 
 print(f"InEx Bug Agent - Thread {thread_id[:8]} - type 'q' to quit")
 
-while True: 
+while True:
     q = input("You: ")
-    if q=="q":
+    if q == "q":
         break
     inputs = {"messages": [{"role": "user", "content": q}]}
     results = agent.invoke(inputs, config=config)
+    
+    while results.get("__interrupt__"):
+        interrupt_data = results["__interrupt__"][0].value
+        print(f"\n{interrupt_data['message']}")
+        answer = input("> ")
+        results = agent.invoke(Command(resume=answer), config=config)
     
     print(f"Agent: {results['messages'][-1].content}")
     
