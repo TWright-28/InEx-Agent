@@ -6,8 +6,6 @@ from langchain.tools import tool
 db = InExTool(DB_PATH)
 cl = Classify(classifier, temperature, classifyPrompt)
 
-ISSUE_THRESHOLD = 1000 
-
 @tool('get_stats', description="Collect the stats about classification distributions from the database", return_direct=False)
 def get_stats() -> str:
     results = db.get_stats()

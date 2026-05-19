@@ -31,7 +31,7 @@ checkpointer = SqliteSaver(checkpoint_conn)
 agent = create_agent(
     model=llm,
     tools= [get_stats, collect_all, count_issues, classify_all],
-    system_prompt="You are a helpful assistant for analyzing and classifying GitHub bug reports.  You can query a database of classified bug reports from open source projects, you can also collect bug reports from a github repository and classify bug reports",
+    system_prompt=system_prompt,
     checkpointer= checkpointer,
 ) 
 LAST_THREAD_FILE = "db/last_thread.txt"

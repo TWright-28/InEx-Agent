@@ -52,6 +52,46 @@ class InExTool:
             UNIQUE(issue_id, model, prompt_version, temperature)
         )""")
         
+        self.cursor.execute("""CREATE TABLE IF NOT EXISTS versions(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER NOT NULL, 
+            package_name = TEXT NOT NULL, 
+            version TEXT NOT NULL,
+            published_at TEXT, 
+            direct_count INTEGER, 
+            dev_count INTEGER,
+            transitive_count INTEGER,
+            transitive_truncated INTEGER,
+            raw_manifest TEXT,
+            snapshotted_at TEXT,
+            FOREIGN KEY (project_id) REFERENCES projects(id),
+            UNIQUE(project_id, version)
+            
+        )""")
+        
+        self.cursor.execute("""CREATE TABLE IF NOT EXISTS version_dependencies(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            version_id INTEGER NOT NULL,
+            dep_name TEXT NOT NULL,
+            dep_kind TEXT NOT NULL CHECK(dep_kind IN ('direct','peer','dev','transitive')),
+            dep_version_range TEXT,
+            depth INTEGER,
+            FOREIGN KEY (version_id) REFERENCES versions(id)
+        )""")
+
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_vdeps_version ON version_dependencies(version_id)")
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_vdeps_name ON version_dependencies(dep_name)")
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_vdeps_kind ON version_dependencies(dep_kind)")
+        
+        for alter in [
+            "ALTER TABLE projects ADD COLUMN package_name TEXT",
+            "ALTER TABLE issues ADD COLUMN version_id INTEGER REFERENCES versions(id)",
+        ]:
+            try:
+                self.cursor.execute(alter)
+            except sqlite3.OperationalError:
+                pass  # column already exists
+        
         self.connection.commit()
         
     def save_project(self, owner, repo):
@@ -117,5 +157,7 @@ class InExTool:
     def get_stats(self):
         self.cursor.execute("SELECT classification, COUNT(id) AS [Number of Classifications] FROM classifications GROUP BY classification")
         return self.cursor.fetchall()
+    
+    
 
         
