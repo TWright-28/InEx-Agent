@@ -185,4 +185,24 @@ class InExTool:
         self.cursor.execute(q, params)
         return self.cursor.fetchall()
     
+    def getVersionByString(self, project_id, version):
+        self.cursor.execute("SELECT id FROM versions WHERE project_id = ? AND version = ?", (project_id, version),)
+        row = self.cursor.fetchone()
+        return row[0] if row else None
          
+    def saveVersion(self, project_id, package_name, version, published_at, counts, raw_manifest):
+        self.cursor.execute("""INSERT OR IGNORE INTO versions(project_id, package_name, version, published_at, direct_count, peer_count, dev_count, transitive_count, transitive_truncated, raw_manifest, snapshotted_at)
+            VALUES (?,?, ?, ?,?, ?,?,?,?, ?,?)""",
+            (project_id, package_name, version, published_at, counts.get("direct"), counts.get("peer"), counts.get("dev"), counts.get("transitive"), 1 if counts.get("transitive_truncated") else 0, json.dumps(raw_manifest) if raw_manifest else None, datetime.now().isoformat(),),
+        )
+        self.connection.commit()
+        self.cursor.execute("SELECT id FROM versions WHERE project_id = ? AND version = ?", (project_id, version),)
+        return self.cursor.fetchone()[0]
+    
+    def save_dependencies(self, version_id, rows):
+        self.cursor.executemany("INSERT INTO version_dependencies(version_id, dep_name, dep_kind, dep_version_range, depth) VALUES (?,?,?,?,?)", [(version_id, *r) for r in rows],)
+        self.connection.commit()
+
+    def link_issue_to_version(self, issue_id, version_id):
+        self.cursor.execute("UPDATE issues SET version_id = ? WHERE id = ?",(version_id, issue_id),)
+        self.connection.commit()
