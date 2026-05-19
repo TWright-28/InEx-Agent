@@ -1,7 +1,7 @@
 from langchain_ollama import ChatOllama
 from config import orchestrator, temperature, systemPrompt
 from langchain.agents import create_agent
-from tools.langchain_tools import get_stats, collect_all, classify_all, count_issues
+from tools.core.langchain_tools import get_stats, collect_all, classify_all, count_issues
 from langgraph.checkpoint.sqlite import SqliteSaver
 import logging
 import logging.config

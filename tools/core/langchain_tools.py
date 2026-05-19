@@ -1,6 +1,6 @@
-from tools.database import InExTool
-from tools.collect import Collect
-from tools.classify import Classify
+from tools.lib.database import InExTool
+from tools.lib.collect import Collect
+from tools.lib.classify import Classify
 from config import DB_PATH, GITHUB_TOKEN, temperature, max_tokens, classifier, classifyPrompt
 from langchain.tools import tool
 db = InExTool(DB_PATH)
