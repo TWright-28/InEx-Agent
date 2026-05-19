@@ -170,4 +170,19 @@ class InExTool:
     def projectHasClassifications(self, project_id):
         self.cursor.execute("SELECT 1 from classifications c INNER JOIN issues i on i.id = ci.issue_id WHERE i.project_id = ? LIMIT 1", (project_id,),)
         return self.cursor.fetchone() is not None
+    
+    def getClassificationIssueWindow(self, project_id, start= None, end = None):
+        q = "SELECT i.id, i.issue_number, i.created_at, i.version_id FROM issues i INNER JOIN classifications c ON c.issue_id = i.id WHERE i.project_id = ?"
+        params = [project_id]
         
+        if start:
+            q += "AND i.created_at >= ?"
+            params.append(start)
+        if end: 
+            q+= "AND i.created_at <= ?"
+            params.append(end)
+        q += "ORDER BY i.created_at"
+        self.cursor.execute(q, params)
+        return self.cursor.fetchall()
+    
+         
