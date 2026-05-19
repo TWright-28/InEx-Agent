@@ -90,7 +90,7 @@ class InExTool:
             try:
                 self.cursor.execute(alter)
             except sqlite3.OperationalError:
-                pass  # column already exists
+                pass 
         
         self.connection.commit()
         
@@ -158,6 +158,16 @@ class InExTool:
         self.cursor.execute("SELECT classification, COUNT(id) AS [Number of Classifications] FROM classifications GROUP BY classification")
         return self.cursor.fetchall()
     
-    
+    def setPackageName(self, project_id, package_name):
+        self.cursor.execute("UPDATE projects SET package_name = ? WHERE id = ?", (package_name, project_id),)
+        self.connection.commit()
+        
+    def getPackageName(self, project_id):
+        self.cursor.execute("SELECT package_name FROM projects WHERE id = ?", (project_id,))
+        row = self.cursor.fetchone()
+        return row[0] if row else None
 
+    def projectHasClassifications(self, project_id):
+        self.cursor.execute("SELECT 1 from classifications c INNER JOIN issues i on i.id = ci.issue_id WHERE i.project_id = ? LIMIT 1", (project_id,),)
+        return self.cursor.fetchone() is not None
         
