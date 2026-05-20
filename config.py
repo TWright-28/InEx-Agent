@@ -10,6 +10,8 @@ os.makedirs(os.path.join(BASE_DIR, "logs"), exist_ok=True)
 
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 DB_PATH = os.getenv("DATABASE_URL")
+#change db in .env
+
 OLLAMA_BASE = "http://localhost:11434"
 
 promptsDir = "prompts/"

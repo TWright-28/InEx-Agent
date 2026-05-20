@@ -1,7 +1,7 @@
 from langchain_ollama import ChatOllama
 from config import orchestrator, temperature, systemPrompt
 from langchain.agents import create_agent
-from tools.core.langchain_tools import get_stats, collect_all, classify_all, count_issues
+from tools.langchain_tools import get_stats, collect_all, classify_all, count_issues, snapshot_dependencies, list_projects
 from langgraph.checkpoint.sqlite import SqliteSaver
 import logging
 import logging.config
@@ -30,7 +30,7 @@ checkpointer = SqliteSaver(checkpoint_conn)
 
 agent = create_agent(
     model=llm,
-    tools= [get_stats, collect_all, count_issues, classify_all],
+    tools= [get_stats, collect_all, count_issues, classify_all, snapshot_dependencies, list_projects],
     system_prompt=system_prompt,
     checkpointer= checkpointer,
 ) 
