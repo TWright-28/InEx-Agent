@@ -76,7 +76,9 @@ class InExTool:
             dep_name TEXT NOT NULL,
             dep_kind TEXT NOT NULL CHECK(dep_kind IN ('direct','peer','dev','transitive')),
             dep_version_range TEXT,
+            resolved_version TEXT,
             depth INTEGER,
+            root_dep TEXT,
             FOREIGN KEY (version_id) REFERENCES versions(id)
         )""")
 
@@ -88,6 +90,8 @@ class InExTool:
             "ALTER TABLE projects ADD COLUMN package_name TEXT",
             "ALTER TABLE issues ADD COLUMN version_id INTEGER REFERENCES versions(id)",
             "ALTER TABLE versions ADD COLUMN peer_count INTEGER",
+            "ALTER TABLE version_dependencies ADD COLUMN resolved_version TEXT",
+            "ALTER TABLE version_dependencies ADD COLUMN root_dep TEXT",
         ]:
             try:
                 self.cursor.execute(alter)
@@ -149,8 +153,7 @@ class InExTool:
             (issue_id, classification, probabilites, classification_raw, model,prompt, temp, classifiedat))
         self.connection.commit()
 
-        self.cursor.execute(
-            "SELECT id FROM classifications WHERE issue_id = ?", (issue_id,))
+        self.cursor.execute("SELECT id FROM classifications WHERE issue_id = ?", (issue_id,))
         return self.cursor.fetchone()[0]
 
     def get_stats(self):
@@ -158,8 +161,7 @@ class InExTool:
         return self.cursor.fetchall()
 
     def setPackageName(self, project_id, package_name):
-        self.cursor.execute("UPDATE projects SET package_name = ? WHERE id = ?",
-            (package_name, project_id))
+        self.cursor.execute("UPDATE projects SET package_name = ? WHERE id = ?", (package_name, project_id))
         self.connection.commit()
 
     def getPackageName(self, project_id):
@@ -187,9 +189,7 @@ class InExTool:
         return self.cursor.fetchall()
 
     def getVersionByString(self, project_id, version):
-        self.cursor.execute(
-            "SELECT id FROM versions WHERE project_id = ? AND version = ?",
-            (project_id, version))
+        self.cursor.execute("SELECT id FROM versions WHERE project_id = ? AND version = ?", (project_id, version))
         row = self.cursor.fetchone()
         return row[0] if row else None
 
@@ -205,13 +205,11 @@ class InExTool:
              datetime.now().isoformat()))
         self.connection.commit()
 
-        self.cursor.execute(
-            "SELECT id FROM versions WHERE project_id = ? AND version = ?",
-            (project_id, version))
+        self.cursor.execute("SELECT id FROM versions WHERE project_id = ? AND version = ?",(project_id, version))
         return self.cursor.fetchone()[0]
 
     def save_dependencies(self, version_id, rows):
-        self.cursor.executemany("INSERT INTO version_dependencies(version_id, dep_name, dep_kind, dep_version_range, depth) VALUES (?,?,?,?,?)",[(version_id, *r) for r in rows])
+        self.cursor.executemany("INSERT INTO version_dependencies(version_id, dep_name, dep_kind, dep_version_range, resolved_version, depth, root_dep) VALUES (?,?,?,?,?,?,?)",[(version_id, *r) for r in rows])
         self.connection.commit()
 
     def update_transitive_counts(self, version_id, transitive_count, truncated):
