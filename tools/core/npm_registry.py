@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 import requests
 from nodesemver import max_satisfying
+from collections import deque
 
 REGISTRY_BASE = "https://registry.npmjs.org"
 HTTP_TIMEOUT = 30
@@ -34,7 +35,7 @@ class Registry:
         if name in self._mem:
             return self._mem[name]
  
-        cp = self._cache_path(name)
+        cp = self._cachePath(name)
         if cp.exists():
             try:
                 data = json.loads(cp.read_text())
@@ -121,7 +122,7 @@ def resolveTime(reg: Registry, name: str, version_range: str, T: str, cache: Dic
     if key in cache:
         return cache[key]
  
-    doc = reg.fetch_doc(name)
+    doc = reg.fetchDoc(name)
     if not doc or not doc.get("versions"):
         cache[key] = None
         return None
@@ -139,53 +140,78 @@ def resolveTime(reg: Registry, name: str, version_range: str, T: str, cache: Dic
     cache[key] = resolved
     return resolved
     
-def buildTransitive(reg: Registry, root_deps: Dict[str, str], T: str, max_nodes: int = MAX_TRANSITIVE_NODES) -> Tuple[Dict[str, dict], bool, int]:
+def buildTransitive(reg: Registry, root_deps: Dict[str, str], T: str,max_nodes: int = MAX_TRANSITIVE_NODES) -> Tuple[Dict[str, dict], bool, int]:
+  
     resolution_cache: Dict[Tuple[str, str], Optional[str]] = {}
-    nodes: Dict[str, dict] = {}
-    truncated = False
+ 
+    resolved_of: Dict[str, Optional[str]] = {}
+    range_of: Dict[str, str] = {}
+    children_of: Dict[str, List[str]] = {}
     unresolved = 0
-
-    frontier: List[Tuple[str, str]] = list(root_deps.items())
+    truncated = False
+ 
     for name, rng in root_deps.items():
-        resolved = resolveTime(reg, name, rng, T, resolution_cache)
-        if resolved is None:
+        resolved_of[name] = resolveTime(reg, name, rng, T, resolution_cache)
+        range_of[name] = rng
+        if resolved_of[name] is None:
             unresolved += 1
-        nodes[name] = {"resolved_version": resolved, "depth": 1, "range": rng}
  
-    current_depth = 1
+    frontier = deque(root_deps.keys())
     while frontier:
-        reg.prefetch({n for n, _ in frontier})
-        next_depth = current_depth + 1
-        new_frontier: List[Tuple[str, str]] = []
- 
-        for name, _rng in frontier:
-            info = nodes.get(name)
-            if not info or info["resolved_version"] is None:
+        reg.prefetch(set(frontier))
+        nxt = []
+        for name in frontier:
+            children_of.setdefault(name, [])
+            resolved = resolved_of.get(name)
+            if resolved is None:
                 continue 
  
-            doc = reg.fetch_doc(name)
+            doc = reg.fetchDoc(name)
             if not doc:
                 continue
-            manifest = doc.get("versions", {}).get(info["resolved_version"], {})
+            manifest = doc.get("versions", {}).get(resolved, {})
             child_deps = manifest.get("dependencies") or {}
  
             for child, child_rng in child_deps.items():
-                if child in nodes:
+                children_of[name].append(child)
+                if child in resolved_of:
                     continue 
-                if len(nodes) >= max_nodes:
+                if len(resolved_of) >= max_nodes:
                     truncated = True
                     continue
-                resolved = resolveTime(reg, child, child_rng, T,resolution_cache)
-                if resolved is None:
+                resolved_child = resolveTime(
+                    reg, child, child_rng, T, resolution_cache)
+                resolved_of[child] = resolved_child
+                range_of[child] = child_rng
+                if resolved_child is None:
                     unresolved += 1
-                nodes[child] = {
-                    "resolved_version": resolved,
-                    "depth": next_depth,
-                    "range": child_rng,
-                }
-                new_frontier.append((child, child_rng))
+                nxt.append(child)
+        frontier = deque(nxt)
  
-        frontier = new_frontier
-        current_depth = next_depth
+    roots_of: Dict[str, Dict[str, int]] = {pkg: {} for pkg in resolved_of}
+ 
+    for root in root_deps:
+        seen = {root: 0}
+        q = deque([(root, 0)])
+        while q:
+            pkg, depth = q.popleft()
+            prev = roots_of[pkg].get(root)
+            if prev is None or depth < prev:
+                roots_of[pkg][root] = depth
+            for child in children_of.get(pkg, []):
+                if child not in resolved_of:
+                    continue
+                nd = depth + 1
+                if child not in seen or nd < seen[child]:
+                    seen[child] = nd
+                    q.append((child, nd))
+ 
+    nodes: Dict[str, dict] = {}
+    for pkg in resolved_of:
+        nodes[pkg] = {
+            "resolved_version": resolved_of[pkg],
+            "range": range_of.get(pkg),
+            "roots": roots_of.get(pkg, {}),
+        }
  
     return nodes, truncated, unresolved

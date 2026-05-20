@@ -296,17 +296,19 @@ class DependencySnapshotter:
 
             rows = []
             for name, info in nodes.items():
-                if info["depth"] == 1:
-                    continue  # direct dep, already in e DB
-                rows.append((
-                    name,
-                    "transitive",
-                    info.get("range"),
-                    info.get("resolved_version"),
-                    info["depth"],
-                ))
-            db.save_dependencies(version_id, rows)
-            db.update_transitive_counts(version_id, len(rows), truncated)
+                for root, depth_via_root in info["roots"].items():
+                        if depth_via_root == 0:
+                            continue  # direct dep is its own root
+                        rows.append((
+                            name,
+                            "transitive",
+                            info.get("range"),
+                            info.get("resolved_version"),
+                            depth_via_root,        # per-root depth
+                            root,                  # root_dep
+                        ))
+                db.save_dependencies(version_id, rows)
+                db.update_transitive_counts(version_id, len(rows), truncated)
 
             walked += 1
             total_unresolved += unresolved
