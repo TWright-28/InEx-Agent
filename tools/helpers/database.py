@@ -76,6 +76,7 @@ class InExTool:
             dep_name TEXT NOT NULL,
             dep_kind TEXT NOT NULL CHECK(dep_kind IN ('direct','peer','dev','transitive')),
             dep_version_range TEXT,
+            resolved_version TEXT,
             depth INTEGER,
             FOREIGN KEY (version_id) REFERENCES versions(id)
         )""")
@@ -88,6 +89,7 @@ class InExTool:
             "ALTER TABLE projects ADD COLUMN package_name TEXT",
             "ALTER TABLE issues ADD COLUMN version_id INTEGER REFERENCES versions(id)",
             "ALTER TABLE versions ADD COLUMN peer_count INTEGER",
+            "ALTER TABLE version_dependencies ADD COLUMN resolved_version TEXT",
         ]:
             try:
                 self.cursor.execute(alter)
@@ -211,7 +213,7 @@ class InExTool:
         return self.cursor.fetchone()[0]
 
     def save_dependencies(self, version_id, rows):
-        self.cursor.executemany("INSERT INTO version_dependencies(version_id, dep_name, dep_kind, dep_version_range, depth) VALUES (?,?,?,?,?)",[(version_id, *r) for r in rows])
+        self.cursor.executemany("INSERT INTO version_dependencies(version_id, dep_name, dep_kind, dep_version_range, resolved_version, depth) VALUES (?,?,?,?,?,?)",[(version_id, *r) for r in rows])
         self.connection.commit()
 
     def update_transitive_counts(self, version_id, transitive_count, truncated):
