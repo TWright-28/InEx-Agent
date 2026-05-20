@@ -1,13 +1,18 @@
 from tools.helpers.database import InExTool
 from tools.helpers.collect import Collect
 from tools.helpers.classify import Classify
+from tools.helpers.sqlQuery import runSql, describeSchema
 from config import DB_PATH, GITHUB_TOKEN, temperature, max_tokens, classifier, classifyPrompt
 from langchain.tools import tool
 from tools.core.dependencies import DependencySnapshotter
+import sqlite3 
+
 
 db = InExTool(DB_PATH)
 cl = Classify(classifier, temperature, classifyPrompt)
 snap = DependencySnapshotter()
+ro_conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True, check_same_thread=False)
+MAX_SQL_ROWS = 50
 
 @tool('get_stats', description="Collect the stats about classification distributions from the database", return_direct=False)
 def get_stats() -> str:
@@ -59,9 +64,7 @@ def get_transitive_dependencies(repo_name: str, npm_package: str,version: str = 
 @tool("list_projects",description=("List all projects in the database that have at least one classification, with counts and the most recent issue date. Use this when the user asks what projects are available to analyze, or when you need to confirm a project exists before running other tools."),)
 def list_projects() -> dict:
     db.cursor.execute("""
-        SELECT p.owner, p.repo, p.package_name,
-               COUNT(DISTINCT c.id) AS classification_count,
-               MAX(i.created_at) AS latest_issue
+        SELECT p.owner, p.repo, p.package_name, COUNT(DISTINCT c.id) AS classification_count, MAX(i.created_at) AS latest_issue
         FROM projects p
         INNER JOIN issues i ON i.project_id = p.id
         INNER JOIN classifications c ON c.issue_id = i.id
@@ -82,3 +85,12 @@ def list_projects() -> dict:
             for owner, repo, pkg, count, latest in rows
         ],
     }
+
+@tool("describe_schema", description=("Returns the database schema — every table and its columns. Call before writing a run_sql query so you use correct names." ))
+def describe_schema() -> dict:
+    return describeSchema()
+
+
+@tool("run_sql", description=("Run a READ-ONLY SQL SELECT against the database. For analysis questions not covered by other tools. Only SELECT allowed; writes are rejected. Call describe_schema first. Results capped at 200 rows — prefer COUNT/AVG/GROUP BY for large tables."))
+def run_sql(query: str) -> dict:
+    return runSql(query)
