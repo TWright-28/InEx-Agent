@@ -13,14 +13,14 @@ from langgraph.types import Command
 
 with open("loggingConfigs/config.json") as f:
     logging.config.dictConfig(json.load(f))
-    
+
 with open(systemPrompt, "r", encoding="utf-8") as f:
     system_prompt = f.read()
 
 llm = ChatOllama(
-    model= orchestrator, 
+    model= orchestrator,
     temperature= temperature
-    )
+)
 
 # checkpointer for our orch model to understand prior context
 os.makedirs("db", exist_ok=True)
@@ -60,7 +60,7 @@ while True:
         break
     inputs = {"messages": [{"role": "user", "content": q}]}
     results = agent.invoke(inputs, config=config)
-    
+
     print(f"Agent: {results['messages'][-1].content}")
     
     

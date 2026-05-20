@@ -1,6 +1,6 @@
-from tools.lib.database import InExTool
-from tools.lib.collect import Collect
-from tools.lib.classify import Classify
+from tools.helpers.database import InExTool
+from tools.helpers.collect import Collect
+from tools.helpers.classify import Classify
 from config import DB_PATH, GITHUB_TOKEN, temperature, max_tokens, classifier, classifyPrompt
 from langchain.tools import tool
 from tools.core.dependencies import DependencySnapshotter
