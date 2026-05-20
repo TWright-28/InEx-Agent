@@ -1,7 +1,7 @@
 import json
 import sys
 import glob
-from tools.database import InExTool
+from tools.lib.database import InExTool
 from config import DB_PATH
 
 target = sys.argv[1] if len(sys.argv) > 1 else None
