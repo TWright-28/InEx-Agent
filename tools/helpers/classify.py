@@ -3,6 +3,7 @@ from pathlib import Path
 import requests
 import argparse
 from datetime import datetime
+# import tools.helpers.database
 import logging
 logger = logging.getLogger(__name__)
 
@@ -195,7 +196,7 @@ DO NOT REPEAT RAW FILE PATHS OR FULL STACK TRACE OUTPUTS.
             return f"Project {owner}/{repo} not found in database."
         projectId = row[0]
         
-        unclassified = db.get_unclassified_in_window(projectId, start, end, direction, max_issues)
+        unclassified = db.getUnclassifiedInWindow(projectId, start, end, direction, max_issues)
         if not unclassified:
             return f"No unclassified issues found for {owner}/{repo} in the given window."
 
@@ -249,7 +250,7 @@ DO NOT REPEAT RAW FILE PATHS OR FULL STACK TRACE OUTPUTS.
         logger.info("Finished classification for %s/%s: %d issues classified", owner, repo, classified)
         return f"Classified {classified} issues from {owner}/{repo}."
         
-    def previewClassification(self, owner, repo, db, max=None, start=None, end=None, direction="desc"):
+    def previewClassification(self, owner, repo, db, max_count=None, start=None, end=None, direction="desc"):
         db.cursor.execute("SELECT id FROM projects WHERE owner=? AND repo=?", (owner, repo))
         row = db.cursor.fetchone()
         
@@ -257,7 +258,7 @@ DO NOT REPEAT RAW FILE PATHS OR FULL STACK TRACE OUTPUTS.
             return {"status": "error", "code": "project_not_found", "owner": owner, "repo": repo}
         
         project_id = row[0] 
-        rows = db.get_unclassified_in_window(project_id, start, end,direction, max)
+        rows = db.getUnclassifiedInWindow(project_id, start, end,direction, max_count)
         if not rows:
             return {"status": "ok", "would_classify": 0, "owner": owner, "repo": repo}
         
