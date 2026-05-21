@@ -434,13 +434,16 @@ class Collect:
             "closing_commit": closingCommit,
         }
 
-    def collectAll(self, owner, repo, db, max_issues=None):
+    def collectAll(self, owner, repo, db, max_issues=None, start_date=None, end_date=None, direction="desc"):
         logger.info("Starting collection for %s\%s", owner, repo)
         projectId = db.save_project(owner, repo)
         collected = 0
         skipped = 0
         pg = 1
 
+        if direction not in ("desc", "asc"):
+                direction = "desc"
+        
         while True:
             issuesUrl = f"https://api.github.com/repos/{owner}/{repo}/issues?state=all&sort=created&direction=desc"
             issues = self.get(f"{issuesUrl}&per_page=100&page={pg}").json()
@@ -449,29 +452,49 @@ class Collect:
                 if issue.get("pull_request"):
                     continue
                 
+                created = issue.get("created_at")
+                
+                if direction == "desc":
+                    if end_date and created and created > end_date:
+                        continue 
+                    if start_date and created and created < start_date:
+                        logger.info("Reached start_date boundary, stopping.")
+                        return self._finish(owner, repo, collected, skipped)
+                else:
+
+                    if start_date and created and created < start_date:
+                        continue 
+                    if end_date and created and created > end_date:
+                        logger.info("Reached end_date boundary, stopping.")
+                        return self._finish(owner, repo, collected, skipped)
+
                 num = issue.get("number")
                 db.cursor.execute("SELECT id FROM issues WHERE project_id = ? AND issue_number = ?", (projectId, num))
-            
                 if db.cursor.fetchone():
                     skipped += 1
                     continue
-                
+
                 issueData = self.collectIssue(owner, repo, num)
                 if issueData is None:
                     continue
-                
+
                 db.save_issue(projectId, issueData)
-                collected +=1
-                
+                collected += 1
+
                 if collected % 10 == 0:
-                    logger.info(f"  Collected {collected} issues (skipped {skipped})...")
+                    logger.info("  Collected %d issues (skipped %d)",collected, skipped)
 
                 if max_issues and collected >= max_issues:
-                    return f"Collected {collected} issues from {owner}/{repo} (skipped {skipped} already in DB)."
+                    logger.info("Reached max_issues cap.")
+                    return self._finish(owner, repo, collected, skipped)
 
             if len(issues) < 100:
                 break
             pg += 1
 
-        logger.info("Finished collection for %s/%s: %d collected, %d skipped", owner, repo, collected, skipped)
+        return self._finish(owner, repo, collected, skipped)
+    
+    def _finish(self, owner, repo, collected, skipped):
+        logger.info("Finished collection for %s/%s: %d collected, %d skipped",
+                    owner, repo, collected, skipped)
         return f"Collected {collected} issues from {owner}/{repo} (skipped {skipped} already in DB)."

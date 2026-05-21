@@ -31,11 +31,17 @@ def count_issues(repoName: str) -> str:
         return f"{owner}/{repo} has 1000+ issues (exact count unavailable due to GitHub API limit)."
     return f"{owner}/{repo} has {count} issues."
 
-@tool('collect_all', description="Collect all the issues from a github repo and save to the database, Input should be in owner/repo format")
-def collect_all(repoName: str) -> str: 
-    owner, repo = repoName.split("/")
+@tool('collect_all', description="Collect issues from a GitHub repo and save to the database. Input: repo_name as 'owner/repo'. Optional: count (max number of issues), start_date and end_date (ISO 'YYYY-MM-DD', filter by issue creation date), direction ('desc' for newest-first, 'asc' for oldest-first; default desc). Long-running: multiple API calls per issue.")
+def collect_all(repo_name: str, count: int = None, start_date: str = None, end_date: str = None, direction: str = "desc") -> str: 
+    parts = repo_name.strip("/").split("/")
+    if len(parts) != 2:
+        return f"Invalid format. Expected 'owner/repo', got '{repo_name}'."
+    
+    owner, repo = parts
+    if end_date and len(end_date) == 10:
+        end_date = end_date + "T23:59:59Z"
     collector = Collect(GITHUB_TOKEN)
-    return collector.collectAll(owner, repo, db)
+    return collector.collectAll(owner, repo, db, max_issues=count, start_date=start_date, end_date=end_date, direction=direction)
 
 @tool('classify_all', description="Classify all the issues from a github repo in our database and classify them")
 def classify_all(repoName: str) -> str: 
