@@ -5,8 +5,7 @@ logger = logging.getLogger(__name__)
 extRatio = 1.011 # our dep number we got from ESEM
 
 
-EXTRAPOLATION_NOTE = "Modeled estimate. Extends the per-dependency odds ratio (1.011) from Wright et al. to the full transitive tree; the original paper fitted this coefficient on direct dependencies only, so figures including transitive dependencies are an extrapolation, not a paper finding."
-
+EXTRAPOLATION_NOTE = "Modeled estimate. Extends the per-dependency odds ratio (1.011) to the full transitive tree"
 def oddsIncreasePct(dep_count: int) -> float:
     return (extRatio**dep_count  -1)*100.0
 
@@ -56,7 +55,7 @@ def depRisk(repo: str, db, version: str = None) -> dict:
     perDep.sort(key=lambda d: d["transitive_subtree"], reverse=True)
  
     totalDeps = direct_count + transitive_count
-    versionMod = round(oddsIncreasePct(total_deps), 1)
+    versionMod = round(oddsIncreasePct(totalDeps), 1)
  
     return {
         "status": "ok",
