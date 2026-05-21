@@ -127,11 +127,11 @@ class DependencySnapshotter:
 
         rows = []
         for name, rng in direct.items():
-            rows.append((name, "direct", rng, None, 0))
+            rows.append((name, "direct", rng, None, 0, None))
         for name, rng in peer.items():
-            rows.append((name, "peer", rng, None, 0))
+            rows.append((name, "peer", rng, None, 0, None))
         for name, rng in dev.items():
-            rows.append((name, "dev", rng, None, 0))
+            rows.append((name, "dev", rng, None, 0, None))
         db.save_dependencies(version_id, rows)
         return version_id
 
@@ -283,10 +283,12 @@ class DependencySnapshotter:
                 continue
             if not published_at:
                 skipped_no_publish_date += 1
-                logger.warning("  %s@%s has no published_at; skipping transitive",
-                            npm_package, version_str)
+                logger.warning("  %s@%s has no published_at; skipping transitive", npm_package, version_str)
                 continue
 
+            # overlapping check for if wehave already done a transiticve walk 
+            db.cursor.execute("DELETE FROM version_dependencies WHERE version_id = ? AND dep_kind = 'transitive'", (version_id,))
+            db.connection.commit()
             db.cursor.execute("SELECT dep_name, dep_version_range FROM version_dependencies WHERE version_id = ? AND dep_kind = 'direct'", (version_id,))
             direct = {name: rng for name, rng in db.cursor.fetchall()}
 
@@ -295,18 +297,18 @@ class DependencySnapshotter:
             rows = []
             for name, info in nodes.items():
                 for root, depth_via_root in info["roots"].items():
-                        if depth_via_root == 0:
-                            continue  # direct dep is its own root
-                        rows.append((
-                            name,
-                            "transitive",
-                            info.get("range"),
-                            info.get("resolved_version"),
-                            depth_via_root,        # per-root depth
-                            root,                  # root_dep
-                        ))
-                db.save_dependencies(version_id, rows)
-                db.update_transitive_counts(version_id, len(rows), truncated)
+                    if depth_via_root == 0:
+                        continue  # direct dep is its own root
+                    rows.append((
+                        name,
+                        "transitive",
+                        info.get("range"),
+                        info.get("resolved_version"),
+                        depth_via_root,        # per-root depth
+                        root,                  # root_dep
+                    ))
+            db.save_dependencies(version_id, rows)
+            db.update_transitive_counts(version_id, len(rows), truncated)
 
             walked += 1
             total_unresolved += unresolved

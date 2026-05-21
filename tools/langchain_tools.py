@@ -5,6 +5,7 @@ from tools.helpers.sqlQuery import runSql, describeSchema
 from config import DB_PATH, GITHUB_TOKEN, temperature, max_tokens, classifier, classifyPrompt
 from langchain.tools import tool
 from tools.core.dependencies import DependencySnapshotter
+from tools.core.analysis import depRisk 
 import sqlite3 
 
 
@@ -116,3 +117,7 @@ def preview_classification(repo_name: str, count: int = None, start: str = None,
     if end and len(end) == 10:
         end = end + "T23:59:59Z"
     return cl.previewClassification(owner, repo, db, max_count=count, start=start, end=end, direction=direction)
+
+@tool("dependency_risk", description=("Compute modeled Extrinsic-bug exposure for a project version, based on its dependency count. Applies the per-dependency odds ratio from Wright et al. to the full dependency tree. Returns the version-level modeled odds increase and a per-direct-dependency breakdown ranked by transitive subtree size. Requires transitive dependencies to have been collected (get_transitive_dependencies). Input: repo_name as 'owner/repo'. Optional: version (defaults to the latest snapshotted version)."))
+def dependency_risk(repo_name: str, version: str = None) -> dict:
+    return depRisk(repo_name, db, version=version)
