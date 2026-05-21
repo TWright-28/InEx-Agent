@@ -249,58 +249,26 @@ DO NOT REPEAT RAW FILE PATHS OR FULL STACK TRACE OUTPUTS.
         logger.info("Finished classification for %s/%s: %d issues classified", owner, repo, classified)
         return f"Classified {classified} issues from {owner}/{repo}."
         
-
-    # parser = argparse.ArgumentParser(description='bug classifier')
-    # parser.add_argument('--input', type=str, required=True)
-    # parser.add_argument('--prompt', type=str, required=True)
-    # parser.add_argument('--model', type=str, default='qwen3:32b')
-    # parser.add_argument('--output', type=str, default='classified_issues.jsonl')
-    # args = parser.parse_args()
-
-
-    # modelConfig = self.models[args.model].copy()
-
-    # with open(args.prompt, 'r', encoding='utf-8') as f:
-    #     basePrompt = f.read().strip()
-
-    # issues = []
-    # with open(args.input, 'r', encoding='utf-8') as f:
-    #     for line in f:
-    #         if line.strip():
-    #             issues.append(json.loads(line))
-
-    # processed = set()
-    # if Path(args.output).exists():
-    #     with open(args.output, 'r', encoding='utf-8') as f:
-    #         for line in f:
-    #             if line.strip():
-    #                 r = json.loads(line)
-    #                 processed.add((r['owner'], r['repo'], r['number']))
-
-    # classifiedCount = 0
-
-    # for i, issue in enumerate(issues, 1):
-    #     key = (issue['owner'], issue['repo'], issue.get('number'))
-
-    #     if key in processed:
-    #         continue
-
-    #     print(f"[{i}/{len(issues)}] #{key[2]} ({key[0]}/{key[1]}): {issue.get('title', '')[:60]}")
-
-
-    #     rawResponse = callOllama(basePrompt + "\n" + formatIssueData(issue), modelConfig)
-    #     label = extractLabel(rawResponse) or "Unknown"
-    #     probs = extractProbabilities(rawResponse) or {}
-    #     classifiedCount += 1
-
-    #     issue['classification'] = label
-    #     issue['classification_probabilities'] = probs
-    #     issue['classification_raw_response'] = rawResponse
-
-    #     with open(args.output, 'a', encoding='utf-8') as f:
-    #         f.write(json.dumps(issue, ensure_ascii=False) + '\n')
-
-    #     processed.add(key)
-    # print(f"\n classified: {classifiedCount} issues")
-
-
+    def previewClassification(self, owner, repo, db, max=None, start=None, end=None, direction="desc"):
+        db.cursor.execute("SELECT id FROM projects WHERE owner=? AND repo=?", (owner, repo))
+        row = db.cursor.fetchone()
+        
+        if not row:
+            return {"status": "error", "code": "project_not_found", "owner": owner, "repo": repo}
+        
+        project_id = row[0] 
+        rows = db.get_unclassified_in_window(project_id, start, end,direction, max)
+        if not rows:
+            return {"status": "ok", "would_classify": 0, "owner": owner, "repo": repo}
+        
+        dates = [r[6] for r in rows if r[6]]
+        sample = [{"issue_number": r[1], "title": (r[2] or "")[:80]}
+                for r in rows[:5]]
+        return {
+            "status": "ok",
+            "owner": owner, "repo": repo,
+            "would_classify": len(rows),
+            "earliest_created": min(dates) if dates else None,
+            "latest_created": max(dates) if dates else None,
+            "sample": sample,
+        }
