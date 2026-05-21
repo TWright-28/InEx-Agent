@@ -22,7 +22,11 @@ def build_db_summary(db):
             "SELECT COUNT(*) FROM versions WHERE project_id = ?", (pid,))
         version_count = db.cursor.fetchone()[0]
 
-        db.cursor.execute("SELECT COUNT(*) FROM version_dependencies vdJOIN versions v ON v.id = vd.version_idWHERE v.project_id = ? AND vd.dep_kind = 'transitive'", (pid,))
+        db.cursor.execute("""
+            SELECT COUNT(*) FROM version_dependencies vd
+            JOIN versions v ON v.id = vd.version_id
+            WHERE v.project_id = ? AND vd.dep_kind = 'transitive'
+        """, (pid,))        
         has_transitive = "yes" if db.cursor.fetchone()[0] > 0 else "no"
 
         pkg_str = f", npm: {pkg}" if pkg else ""
