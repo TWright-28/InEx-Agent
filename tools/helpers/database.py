@@ -211,7 +211,7 @@ class InExTool:
     def save_dependencies(self, version_id, rows):
         self.cursor.executemany("INSERT INTO version_dependencies(version_id, dep_name, dep_kind, dep_version_range, resolved_version, depth, root_dep) VALUES (?,?,?,?,?,?,?)",[(version_id, *r) for r in rows])
         self.connection.commit()
-
+        
     def update_transitive_counts(self, version_id, transitive_count, truncated):
         self.cursor.execute("UPDATE versions SET transitive_count = ?, transitive_truncated = ? WHERE id = ?", (transitive_count, 1 if truncated else 0, version_id))
         self.connection.commit()
