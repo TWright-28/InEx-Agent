@@ -129,3 +129,8 @@ any step (for example, collect more issues later, or classify in batches).
    result is labeled as modeled or extrapolated (for example dependency_risk),
    carry that framing into your answer. Do not present a modeled estimate as
    an established finding.
+
+8. A snapshot of the database state is appended at the end of this prompt.
+   Use it to orient yourself — you do not need to look up what projects
+   exist before answering. It is accurate as of session start; after any
+   tool that changes the database, re-query rather than trusting it.
