@@ -185,7 +185,7 @@ You must use this structure in your response:
 DO NOT REPEAT RAW FILE PATHS OR FULL STACK TRACE OUTPUTS.
 """
 
-    def classifyAll(self, owner, repo, db):
+    def classifyAll(self, owner, repo, db, max_issues = None, start = None, end = None, direction = "desc"):
         
         logger.info("Starting classification for %s/%s", owner, repo)
 
@@ -195,10 +195,9 @@ DO NOT REPEAT RAW FILE PATHS OR FULL STACK TRACE OUTPUTS.
             return f"Project {owner}/{repo} not found in database."
         projectId = row[0]
         
-        db.cursor.execute("SELECT i.id, i.issue_number, i.title, i.body, i.state, i.state_reason, i.created_at, i.closed_at, i.raw_data FROM issues i LEFT JOIN classifications c on c.issue_id = i.id where i.project_id = ? and c.id IS NULL", (projectId,))
-        unclassified = db.cursor.fetchall()
+        unclassified = db.get_unclassified_in_window(projectId, start, end, direction, max_issues)
         if not unclassified:
-            return f"No unclassified issues found for {owner}/{repo}."
+            return f"No unclassified issues found for {owner}/{repo} in the given window."
 
         classified = 0
         for row in unclassified:

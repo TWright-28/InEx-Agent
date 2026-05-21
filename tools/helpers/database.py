@@ -219,3 +219,24 @@ class InExTool:
     def link_issue_to_version(self, issue_id, version_id):
         self.cursor.execute("UPDATE issues SET version_id = ? WHERE id = ?", (version_id, issue_id))
         self.connection.commit()
+    
+    def getUnclassifiedInWindow(self, project_id, start = None, end = None, direction = "desc", limit = None):
+        q = ("SELECT i.id, i.issue_number, i.title, i.body, i.state, i.state_reason, i.created_at, i.closed_at, i.raw_data FROM issues i LEFT JOIN classifications c ON c.issue_id = i.id WHERE i.project_id = ? AND c.id IS NULL")
+        params = [project_id]
+
+        if start:
+            q += " AND i.created_at >= ?"
+            params.append(start)
+        if end:
+            q += " AND i.created_at <= ?"
+            params.append(end)
+
+        direction = "ASC" if str(direction).lower() == "asc" else "DESC"
+        q += f" ORDER BY i.created_at {direction}"
+
+        if limit:
+            q += " LIMIT ?"
+            params.append(int(limit))
+
+        self.cursor.execute(q, params)
+        return self.cursor.fetchall()
