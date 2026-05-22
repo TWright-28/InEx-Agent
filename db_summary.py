@@ -22,18 +22,10 @@ def build_db_summary(db):
             "SELECT COUNT(*) FROM versions WHERE project_id = ?", (pid,))
         version_count = db.cursor.fetchone()[0]
 
-        db.cursor.execute("""
-            SELECT COUNT(*) FROM version_dependencies vd
-            JOIN versions v ON v.id = vd.version_id
-            WHERE v.project_id = ? AND vd.dep_kind = 'transitive'
-        """, (pid,))        
-        has_transitive = "yes" if db.cursor.fetchone()[0] > 0 else "no"
-
         pkg_str = f", npm: {pkg}" if pkg else ""
         lines.append(
             f"- {owner}/{repo}{pkg_str} — {issues} issues, "
-            f"{classified} classified, {version_count} versions snapshotted, "
-            f"transitive data: {has_transitive}")
+            f"{classified} classified, {version_count} versions snapshotted")
 
     db.cursor.execute("SELECT classification, COUNT(*) FROM classifications GROUP BY classification")
     totals = db.cursor.fetchall()
@@ -43,5 +35,5 @@ def build_db_summary(db):
         lines.append(f"Classification totals: {tstr}")
 
     lines.append("")
-    lines.append("Note: this is a snapshot from session start. After any collect, classify, snapshot, or transitive operation it is stale - re-query with tools rather than trusting it.")
+    lines.append("Note: this is a snapshot from session start. After any collect, classify, or snapshot operation it is stale - re-query with tools rather than trusting it.")
     return "\n".join(lines)

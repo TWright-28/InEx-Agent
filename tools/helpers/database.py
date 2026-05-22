@@ -62,8 +62,6 @@ class InExTool:
             direct_count INTEGER,
             peer_count INTEGER,
             dev_count INTEGER,
-            transitive_count INTEGER,
-            transitive_truncated INTEGER,
             raw_manifest TEXT,
             snapshotted_at TEXT,
             FOREIGN KEY (project_id) REFERENCES projects(id),
@@ -74,7 +72,7 @@ class InExTool:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             version_id INTEGER NOT NULL,
             dep_name TEXT NOT NULL,
-            dep_kind TEXT NOT NULL CHECK(dep_kind IN ('direct','peer','dev','transitive')),
+            dep_kind TEXT NOT NULL CHECK(dep_kind IN ('direct','peer','dev')),
             dep_version_range TEXT,
             resolved_version TEXT,
             depth INTEGER,
@@ -196,11 +194,9 @@ class InExTool:
     def saveVersion(self, project_id, package_name, version, published_at,
                     counts, raw_manifest):
         self.cursor.execute(
-            "INSERT OR IGNORE INTO versions( project_id, package_name, version, published_at, direct_count, peer_count, dev_count, transitive_count, transitive_truncated, raw_manifest, snapshotted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT OR IGNORE INTO versions(project_id, package_name, version, published_at, direct_count, peer_count, dev_count, raw_manifest, snapshotted_at) VALUES (?,?,?,?,?,?,?,?,?)",
             (project_id, package_name, version, published_at,
              counts.get("direct"), counts.get("peer"), counts.get("dev"),
-             counts.get("transitive"),
-             counts.get("transitive_truncated"),
              json.dumps(raw_manifest) if raw_manifest else None,
              datetime.now().isoformat()))
         self.connection.commit()
@@ -212,10 +208,6 @@ class InExTool:
         self.cursor.executemany("INSERT INTO version_dependencies(version_id, dep_name, dep_kind, dep_version_range, resolved_version, depth, root_dep) VALUES (?,?,?,?,?,?,?)",[(version_id, *r) for r in rows])
         self.connection.commit()
         
-    def update_transitive_counts(self, version_id, transitive_count, truncated):
-        self.cursor.execute("UPDATE versions SET transitive_count = ?, transitive_truncated = ? WHERE id = ?", (transitive_count, 1 if truncated else 0, version_id))
-        self.connection.commit()
-
     def link_issue_to_version(self, issue_id, version_id):
         self.cursor.execute("UPDATE issues SET version_id = ? WHERE id = ?", (version_id, issue_id))
         self.connection.commit()
