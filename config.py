@@ -1,6 +1,5 @@
 from dotenv import load_dotenv
 import os 
-import sqlite3
 
 load_dotenv()
 
@@ -18,14 +17,23 @@ promptsDir = "prompts/"
 classifyPrompt = "prompts/classification_prompt.md"
 systemPrompt = "prompts/system_prompt.md"
 
-orchestrator = "gpt-oss:20B"
+# Format: "ollama:model-name" for local, or "provider:model" for cloud
+# Provider strings: "openai", "anthropic", "google_genai", "google_vertexai"
+# Add matching API key to .env: OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY
+# Packages: pip install langchain-openai / langchain-anthropic / langchain-google-genai
 
+orchestrator = "ollama:gpt-oss:20B"
+# orchestrator = "openai:gpt-4o"
+# orchestrator = "anthropic:claude-sonnet-4-6"
+# orchestrator = "google_genai:gemini-2.5-flash"
+
+# classifier always runs locally via Ollama
 # classifier = "qwen3:30b"
 classifier = "qwen2.5:7b-instruct"
 
 temperature = 0.2
 max_tokens = 32000
-num_ctx = 131072
+num_ctx = 131072  # only applied when orchestrator uses Ollama
 
 
 

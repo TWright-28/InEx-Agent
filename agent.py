@@ -1,4 +1,3 @@
-from langchain_ollama import ChatOllama
 from config import orchestrator, temperature, systemPrompt, num_ctx
 from langchain.agents import create_agent
 from tools.langchain_tools import collect_all, classify_all, count_issues, preview_classification, snapshot_dependencies, run_sql, export_data
@@ -19,11 +18,17 @@ with open(systemPrompt, "r", encoding="utf-8") as f:
 
 system_prompt = base_prompt
 
-llm = ChatOllama(
-    model=orchestrator,
-    temperature=temperature,
-    num_ctx=num_ctx,
-)
+
+def build_llm():
+    provider, _, model_name = orchestrator.partition(":")
+    if provider == "ollama":
+        from langchain_ollama import ChatOllama
+        return ChatOllama(model=model_name, temperature=temperature, num_ctx=num_ctx)
+    from langchain.chat_models import init_chat_model
+    return init_chat_model(orchestrator, temperature=temperature)
+
+
+llm = build_llm()
 
 # checkpointer for our orch model to understand prior context
 os.makedirs("db", exist_ok=True)

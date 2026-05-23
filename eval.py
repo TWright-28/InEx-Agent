@@ -6,8 +6,7 @@ import sqlite3
 import uuid
 from unittest.mock import patch
 
-from config import orchestrator, temperature, systemPrompt
-from langchain_ollama import ChatOllama
+from config import orchestrator, temperature, systemPrompt, num_ctx
 from langchain.agents import create_agent
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langsmith import Client
@@ -183,7 +182,13 @@ def build_agent():
         base_prompt = f.read()
     system_prompt = base_prompt
 
-    llm = ChatOllama(model=orchestrator, temperature=temperature)
+    provider, _, model_name = orchestrator.partition(":")
+    if provider == "ollama":
+        from langchain_ollama import ChatOllama
+        llm = ChatOllama(model=model_name, temperature=temperature, num_ctx=num_ctx)
+    else:
+        from langchain.chat_models import init_chat_model
+        llm = init_chat_model(orchestrator, temperature=temperature)
     mem_conn = sqlite3.connect(":memory:", check_same_thread=False)
     checkpointer = SqliteSaver(mem_conn)
 

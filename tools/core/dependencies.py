@@ -139,8 +139,9 @@ class DependencySnapshotter:
         version_start = _clean(version_start)
         version_end = _clean(version_end)
 
-        db.cursor.execute("SELECT id FROM projects WHERE owner = ? AND repo = ?", (owner, repo))
-        row = db.cursor.fetchone()
+        cur = db.connection.cursor()
+        cur.execute("SELECT id FROM projects WHERE owner = ? AND repo = ?", (owner, repo))
+        row = cur.fetchone()
         if not row:
             return {"status": "error", "code": "project_not_found",
                     "owner": owner, "repo": repo}

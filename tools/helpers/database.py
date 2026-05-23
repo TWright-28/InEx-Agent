@@ -99,12 +99,14 @@ class InExTool:
         self.connection.commit()
 
     def save_project(self, owner, repo):
-        self.cursor.execute("INSERT OR IGNORE INTO projects(owner, repo, added_at) VALUES(?,?,?)", (owner, repo, datetime.now().isoformat()))
+        cur = self.connection.cursor()
+        cur.execute("INSERT OR IGNORE INTO projects(owner, repo, added_at) VALUES(?,?,?)", (owner, repo, datetime.now().isoformat()))
         self.connection.commit()
-        self.cursor.execute("SELECT id FROM projects WHERE owner = ? AND repo = ?", (owner, repo))
-        return self.cursor.fetchone()[0]
+        cur.execute("SELECT id FROM projects WHERE owner = ? AND repo = ?", (owner, repo))
+        return cur.fetchone()[0]
 
     def save_issue(self, project_id, issue_data):
+        cur = self.connection.cursor()
         issue_number = issue_data.get("number")
         github_id = issue_data.get("id")
         url = issue_data.get("url")
@@ -133,48 +135,49 @@ class InExTool:
             "closing_pr": issue_data.get("closing_pr"),
             "closing_commit": issue_data.get("closing_commit"),
         })
-
-        self.cursor.execute(
+        cur.execute(
             "INSERT OR IGNORE INTO issues(project_id, issue_number, github_id, url, title, body, state, state_reason, locked, created_at, closed_at, updated_at, comments_count, raw_data) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (project_id, issue_number, github_id, url, title, body, state, state_reason, locked, created_at, closed_at, updated_at, comments_count, raw_data))
         self.connection.commit()
-
-        self.cursor.execute("SELECT id FROM issues WHERE project_id = ? AND issue_number = ?",(project_id, issue_number))
-        return self.cursor.fetchone()[0]
+        cur.execute("SELECT id FROM issues WHERE project_id = ? AND issue_number = ?", (project_id, issue_number))
+        return cur.fetchone()[0]
 
     def save_classification(self, issue_id, classification_data, model, prompt, temp, classifiedat):
+        cur = self.connection.cursor()
         classification = classification_data.get("classification")
         probabilites = json.dumps(classification_data.get("classification_probabilities"))
         classification_raw = classification_data.get("classification_raw_response")
-
-        self.cursor.execute("INSERT OR REPLACE INTO classifications(issue_id, classification, classification_probabilities, classification_raw_response, model, prompt_version, temperature, classified_at) VALUES(?,?,?,?,?,?,?,?)",
-            (issue_id, classification, probabilites, classification_raw, model,prompt, temp, classifiedat))
+        cur.execute("INSERT OR REPLACE INTO classifications(issue_id, classification, classification_probabilities, classification_raw_response, model, prompt_version, temperature, classified_at) VALUES(?,?,?,?,?,?,?,?)",
+            (issue_id, classification, probabilites, classification_raw, model, prompt, temp, classifiedat))
         self.connection.commit()
-
-        self.cursor.execute("SELECT id FROM classifications WHERE issue_id = ?", (issue_id,))
-        return self.cursor.fetchone()[0]
+        cur.execute("SELECT id FROM classifications WHERE issue_id = ?", (issue_id,))
+        return cur.fetchone()[0]
 
     def get_stats(self):
-        self.cursor.execute("SELECT classification, COUNT(id) AS [Number of Classifications] FROM classifications GROUP BY classification")
-        return self.cursor.fetchall()
+        cur = self.connection.cursor()
+        cur.execute("SELECT classification, COUNT(id) AS [Number of Classifications] FROM classifications GROUP BY classification")
+        return cur.fetchall()
 
     def setPackageName(self, project_id, package_name):
-        self.cursor.execute("UPDATE projects SET package_name = ? WHERE id = ?", (package_name, project_id))
+        cur = self.connection.cursor()
+        cur.execute("UPDATE projects SET package_name = ? WHERE id = ?", (package_name, project_id))
         self.connection.commit()
 
     def getPackageName(self, project_id):
-        self.cursor.execute("SELECT package_name FROM projects WHERE id = ?", (project_id,))
-        row = self.cursor.fetchone()
+        cur = self.connection.cursor()
+        cur.execute("SELECT package_name FROM projects WHERE id = ?", (project_id,))
+        row = cur.fetchone()
         return row[0] if row else None
 
     def projectHasClassifications(self, project_id):
-        self.cursor.execute("SELECT 1 FROM classifications c INNER JOIN issues i ON i.id = c.issue_id WHERE i.project_id = ? LIMIT 1", (project_id,))
-        return self.cursor.fetchone() is not None
+        cur = self.connection.cursor()
+        cur.execute("SELECT 1 FROM classifications c INNER JOIN issues i ON i.id = c.issue_id WHERE i.project_id = ? LIMIT 1", (project_id,))
+        return cur.fetchone() is not None
 
     def getClassificationIssueWindow(self, project_id, start=None, end=None):
-        q = ("SELECT i.id, i.issue_number, i.created_at, i.version_id FROM issues i INNER JOIN classifications c ON c.issue_id = i.id WHERE i.project_id = ?")
+        cur = self.connection.cursor()
+        q = "SELECT i.id, i.issue_number, i.created_at, i.version_id FROM issues i INNER JOIN classifications c ON c.issue_id = i.id WHERE i.project_id = ?"
         params = [project_id]
-
         if start:
             q += " AND i.created_at >= ?"
             params.append(start)
@@ -182,53 +185,51 @@ class InExTool:
             q += " AND i.created_at <= ?"
             params.append(end)
         q += " ORDER BY i.created_at"
-
-        self.cursor.execute(q, params)
-        return self.cursor.fetchall()
+        cur.execute(q, params)
+        return cur.fetchall()
 
     def getVersionByString(self, project_id, version):
-        self.cursor.execute("SELECT id FROM versions WHERE project_id = ? AND version = ?", (project_id, version))
-        row = self.cursor.fetchone()
+        cur = self.connection.cursor()
+        cur.execute("SELECT id FROM versions WHERE project_id = ? AND version = ?", (project_id, version))
+        row = cur.fetchone()
         return row[0] if row else None
 
-    def saveVersion(self, project_id, package_name, version, published_at,
-                    counts, raw_manifest):
-        self.cursor.execute(
+    def saveVersion(self, project_id, package_name, version, published_at, counts, raw_manifest):
+        cur = self.connection.cursor()
+        cur.execute(
             "INSERT OR IGNORE INTO versions(project_id, package_name, version, published_at, direct_count, peer_count, dev_count, raw_manifest, snapshotted_at) VALUES (?,?,?,?,?,?,?,?,?)",
             (project_id, package_name, version, published_at,
              counts.get("direct"), counts.get("peer"), counts.get("dev"),
              json.dumps(raw_manifest) if raw_manifest else None,
              datetime.now().isoformat()))
         self.connection.commit()
-
-        self.cursor.execute("SELECT id FROM versions WHERE project_id = ? AND version = ?",(project_id, version))
-        return self.cursor.fetchone()[0]
+        cur.execute("SELECT id FROM versions WHERE project_id = ? AND version = ?", (project_id, version))
+        return cur.fetchone()[0]
 
     def save_dependencies(self, version_id, rows):
-        self.cursor.executemany("INSERT INTO version_dependencies(version_id, dep_name, dep_kind, dep_version_range, resolved_version, depth, root_dep) VALUES (?,?,?,?,?,?,?)",[(version_id, *r) for r in rows])
+        cur = self.connection.cursor()
+        cur.executemany("INSERT INTO version_dependencies(version_id, dep_name, dep_kind, dep_version_range, resolved_version, depth, root_dep) VALUES (?,?,?,?,?,?,?)", [(version_id, *r) for r in rows])
         self.connection.commit()
-        
-    def link_issue_to_version(self, issue_id, version_id):
-        self.cursor.execute("UPDATE issues SET version_id = ? WHERE id = ?", (version_id, issue_id))
-        self.connection.commit()
-    
-    def getUnclassifiedInWindow(self, project_id, start = None, end = None, direction = "desc", limit = None):
-        q = ("SELECT i.id, i.issue_number, i.title, i.body, i.state, i.state_reason, i.created_at, i.closed_at, i.raw_data FROM issues i LEFT JOIN classifications c ON c.issue_id = i.id WHERE i.project_id = ? AND c.id IS NULL")
-        params = [project_id]
 
+    def link_issue_to_version(self, issue_id, version_id):
+        cur = self.connection.cursor()
+        cur.execute("UPDATE issues SET version_id = ? WHERE id = ?", (version_id, issue_id))
+        self.connection.commit()
+
+    def getUnclassifiedInWindow(self, project_id, start=None, end=None, direction="desc", limit=None):
+        cur = self.connection.cursor()
+        q = "SELECT i.id, i.issue_number, i.title, i.body, i.state, i.state_reason, i.created_at, i.closed_at, i.raw_data FROM issues i LEFT JOIN classifications c ON c.issue_id = i.id WHERE i.project_id = ? AND c.id IS NULL"
+        params = [project_id]
         if start:
             q += " AND i.created_at >= ?"
             params.append(start)
         if end:
             q += " AND i.created_at <= ?"
             params.append(end)
-
         direction = "ASC" if str(direction).lower() == "asc" else "DESC"
         q += f" ORDER BY i.created_at {direction}"
-
         if limit:
             q += " LIMIT ?"
             params.append(int(limit))
-
-        self.cursor.execute(q, params)
-        return self.cursor.fetchall()
+        cur.execute(q, params)
+        return cur.fetchall()
