@@ -32,7 +32,6 @@ orchestrator = "ollama:gpt-oss:20B"
 classifier = "qwen2.5:7b-instruct"
 
 temperature = 0.2
-max_tokens = 32000
 num_ctx = 131072  # only applied when orchestrator uses Ollama
 
 

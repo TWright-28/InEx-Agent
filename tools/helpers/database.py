@@ -153,11 +153,6 @@ class InExTool:
         cur.execute("SELECT id FROM classifications WHERE issue_id = ?", (issue_id,))
         return cur.fetchone()[0]
 
-    def get_stats(self):
-        cur = self.connection.cursor()
-        cur.execute("SELECT classification, COUNT(id) AS [Number of Classifications] FROM classifications GROUP BY classification")
-        return cur.fetchall()
-
     def setPackageName(self, project_id, package_name):
         cur = self.connection.cursor()
         cur.execute("UPDATE projects SET package_name = ? WHERE id = ?", (package_name, project_id))

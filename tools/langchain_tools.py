@@ -2,7 +2,7 @@ from tools.helpers.database import InExTool
 from tools.helpers.collect import Collect
 from tools.helpers.classify import Classify
 from tools.helpers.sqlQuery import runSql, describeSchema, exportQuery
-from config import DB_PATH, GITHUB_TOKEN, temperature, max_tokens, classifier, classifyPrompt
+from config import DB_PATH, GITHUB_TOKEN, temperature, classifier, classifyPrompt
 from langchain.tools import tool
 from tools.core.dependencies import DependencySnapshotter
 import sqlite3 

@@ -1,6 +1,4 @@
 import json
-import os
-import sys
 import time
 import requests
 from datetime import datetime, timezone
