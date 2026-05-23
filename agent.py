@@ -1,7 +1,7 @@
 from langchain_ollama import ChatOllama
-from config import orchestrator, temperature, systemPrompt
+from config import orchestrator, temperature, systemPrompt, num_ctx
 from langchain.agents import create_agent
-from tools.langchain_tools import collect_all, classify_all, count_issues, snapshot_dependencies, run_sql, describe_schema, db
+from tools.langchain_tools import collect_all, classify_all, count_issues, preview_classification, snapshot_dependencies, run_sql, describe_schema, export_data, db
 from langgraph.checkpoint.sqlite import SqliteSaver
 import logging
 import logging.config
@@ -21,8 +21,9 @@ with open(systemPrompt, "r", encoding="utf-8") as f:
 system_prompt = base_prompt + "\n\n" + build_db_summary(db)
 
 llm = ChatOllama(
-    model= orchestrator,
-    temperature= temperature
+    model=orchestrator,
+    temperature=temperature,
+    num_ctx=num_ctx,
 )
 
 # checkpointer for our orch model to understand prior context
@@ -33,10 +34,10 @@ checkpointer = SqliteSaver(checkpoint_conn)
 
 agent = create_agent(
     model=llm,
-    tools= [collect_all, count_issues, classify_all, snapshot_dependencies, run_sql, describe_schema,],
+    tools= [collect_all, count_issues, classify_all, preview_classification, snapshot_dependencies, run_sql, describe_schema, export_data,],
     system_prompt=system_prompt,
-    checkpointer= checkpointer,
-) 
+    checkpointer=checkpointer,
+)
 
 thread_id = str(uuid.uuid4())
 config = {"configurable": {"thread_id": thread_id}}

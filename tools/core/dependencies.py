@@ -4,11 +4,10 @@ import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import requests
-from tools.core.npm_registry import (Registry, fetchFull, sortVersionsDesc,)
+from tools.core.npm_registry import fetchFull, sortVersionsDesc
 
 logger = logging.getLogger(__name__)
 
-CACHE_DIR = Path(".npm_cache")
 DOC_CACHE_DIR = Path(".npm_doc_cache")
 
 
@@ -23,7 +22,6 @@ class DependencySnapshotter:
 
     def __init__(self):
         self.session = requests.Session()
-        self.registry = Registry(CACHE_DIR)
 
     def resolve_package_name(self, db, project_id, npm_package):
         cached = db.getPackageName(project_id)

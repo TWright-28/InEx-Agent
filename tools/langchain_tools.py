@@ -1,7 +1,7 @@
 from tools.helpers.database import InExTool
 from tools.helpers.collect import Collect
 from tools.helpers.classify import Classify
-from tools.helpers.sqlQuery import runSql, describeSchema
+from tools.helpers.sqlQuery import runSql, describeSchema, exportQuery
 from config import DB_PATH, GITHUB_TOKEN, temperature, max_tokens, classifier, classifyPrompt
 from langchain.tools import tool
 from tools.core.dependencies import DependencySnapshotter
@@ -46,7 +46,7 @@ def classify_all(repoName: str, count: int = None, start_date: str = None, end_d
         end_date = end_date + "T23:59:59Z"
     return cl.classifyAll(owner, repo, db, max_issues=count, start=start_date, end=end_date, direction=direction)
 
-@tool("snapshot_dependencies", description=("Snapshot npm direct/peer/dev dependencies for a project. Every classified issue is linked to the project version that was live at its creation date. start_date/end_date filter which issues to link (by issue creation date). Requires classifications to exist. DO NOT pass last_n_versions, version_start, or version_end unless the user explicitly asks for extra version history — by default only snapshot the versions that issues map to."))
+@tool("snapshot_dependencies", description=("Fetch npm dependency data for a project and save it to the database. This tool does everything in one step: it contacts the npm registry, finds the package version that was live when each classified issue was filed, saves that version and its direct/peer/dev dependencies to the database, and links each issue to its version. You do NOT need versions in the database beforehand — this tool creates them. Requires classifications to exist. DO NOT pass last_n_versions, version_start, or version_end unless the user explicitly asks for extra version history — by default only snapshot the versions that issues map to."))
 def snapshot_dependencies(repo_name: str, npm_package: str, start_date: str = None, end_date: str = None, version_range: str = None, last_n_versions: int = None, version_start: str = None, version_end: str = None) -> dict:
     parts = repo_name.strip("/").split("/")
     if len(parts) != 2:
@@ -74,4 +74,8 @@ def preview_classification(repo_name: str, count: int = None, start: str = None,
     if end and len(end) == 10:
         end = end + "T23:59:59Z"
     return cl.previewClassification(owner, repo, db, max_count=count, start=start, end=end, direction=direction)
+
+@tool("export_data", description=("Export the results of a SQL SELECT query to a file. Use when the user wants to save data for external analysis. query: a valid SELECT statement. format: 'csv' or 'json' (default 'csv'). filename: optional, auto-generated if omitted. No row limit — exports all matching rows. Files are written to the exports/ directory. Call describe_schema first if column names are needed."))
+def export_data(query: str, format: str = "csv", filename: str = None) -> dict:
+    return exportQuery(query, format, filename)
 
