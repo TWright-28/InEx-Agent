@@ -40,13 +40,13 @@ def runSql(query: str) -> dict:
     except sqlite3.Error as e:
         return {"status": "error", "code": "sql_error", "message": str(e)}
 
-    return {
-        "status": "ok",
-        "columns": cols,
-        "rows": [dict(zip(cols, r)) for r in rows],
-        "row_count": len(rows),
-        "truncated": len(rows) >= MAX_SQL_ROWS,
-    }
+    lines = [" | ".join(cols)]
+    lines.append("-" * len(lines[0]))
+    for r in rows:
+        lines.append(" | ".join("" if v is None else str(v) for v in r))
+    if len(rows) >= MAX_SQL_ROWS:
+        lines.append(f"(truncated at {MAX_SQL_ROWS} rows)")
+    return "\n".join(lines)
 
 
 def exportQuery(query: str, fmt: str = "csv", filename: str = None) -> dict:

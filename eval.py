@@ -1,4 +1,7 @@
 import os
+os.environ["DATABASE_URL"] = "db/eval_test.db"
+
+import contextlib
 import sqlite3
 import uuid
 from unittest.mock import patch
@@ -9,11 +12,7 @@ from langchain.agents import create_agent
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langsmith import Client
 
-from db_summary import build_db_summary
-
-os.environ["DATABASE_URL"] = "db/eval_test.db"
-
-DATASET_NAME = "InEx-Agent-v1"
+DATASET_NAME = "InEx-Agent-v5"
 
 MOCK_COLLECT  = "Collected 10 issues from yeoman/yeoman-test (skipped 0 already in DB)."
 MOCK_CLASSIFY = "Classified 10 issues from yeoman/yeoman-test."
@@ -32,6 +31,7 @@ MOCK_SNAPSHOT = {
     "window": {"start": None, "end": None, "version_range": None,
                "last_n_versions": None, "version_start": None, "version_end": None},
 }
+DEFAULT_COUNT = 45
 
 SEED_SQL = """
 INSERT OR IGNORE INTO projects(id, owner, repo, package_name, added_at)
@@ -75,28 +75,85 @@ def seed_test_db():
     conn.close()
     print("Test DB seeded.")
 
+
+# Each example may carry, in inputs:
+
+#   request                -> single-turn request, OR
+#   turns                  -> list of turns for a multi-turn scenario
+#   count_issues_returns   -> optional int the count_issues mock returns
+
+# and in outputs:
+
+#   expected_tool          -> tool that must appear in the call sequence
+#   before                 -> prerequisite tool that must precede expected_tool
+#   must_not_call          -> tool that must NOT appear
 EXAMPLES = [
+    # 1 - unbounded collect, small repo (45 < 1000): counts then proceeds
     {
-        "inputs":  {"request": "collect issues from yeoman/yeoman-test"},
-        "outputs": {"expected_tool": "collect_all", "before": "count_issues"},
+        "inputs":  {"request": "collect issues from yeoman/yeoman-test",
+                    "count_issues_returns": 45},
+        "outputs": {"expected_tool": "collect_all", "before": "count_issues",
+                    "must_not_call": None},
     },
+    # 2 - dependency snapshot (seeded DB already has classifications)
     {
         "inputs":  {"request": "get the dependency snapshot for yeoman/yeoman-test "
                                "using the npm package yeoman-test"},
-        "outputs": {"expected_tool": "snapshot_dependencies", "before": None},
+        "outputs": {"expected_tool": "snapshot_dependencies", "before": None,
+                    "must_not_call": None},
     },
+    # 3 - multi-turn: user confirms -> classify_all runs after preview
     {
-        "inputs":  {"request": "classify the issues for yeoman/yeoman-test"},
-        "outputs": {"expected_tool": "classify_all", "before": "preview_classification"},
+        "inputs":  {"turns": ["classify the issues for yeoman/yeoman-test", "yes, go ahead"]},
+        "outputs": {"expected_tool": "classify_all", "before": "preview_classification",
+                    "must_not_call": None},
     },
+    # 4 - multi-turn: user declines -> classify_all must NOT run
+    {
+        "inputs":  {"turns": ["classify the issues for yeoman/yeoman-test", "no, don't classify them"]},
+        "outputs": {"expected_tool": "preview_classification", "before": None,
+                    "must_not_call": "classify_all"},
+    },
+    # 5 - analysis question -> run_sql
     {
         "inputs":  {"request": "how many issues does yeoman-test have and "
                                "what is the classification breakdown?"},
-        "outputs": {"expected_tool": "run_sql", "before": None},
+        "outputs": {"expected_tool": "run_sql", "before": None,
+                    "must_not_call": None},
     },
+    # 6 - export request -> export_data, not run_sql
     {
         "inputs":  {"request": "export the classification data for yeoman-test to a csv file"},
-        "outputs": {"expected_tool": "export_data", "before": None},
+        "outputs": {"expected_tool": "export_data", "before": None,
+                    "must_not_call": None},
+    },
+    # 7 - standalone count -> count_issues, must NOT proceed to collect
+    {
+        "inputs":  {"request": "how many issues does yeoman/yeoman-test have?",
+                    "count_issues_returns": 45},
+        "outputs": {"expected_tool": "count_issues", "before": None,
+                    "must_not_call": "collect_all"},
+    },
+    # 8 - standalone preview -> preview_classification, must NOT proceed to classify
+    {
+        "inputs":  {"request": "show me what would be classified for yeoman/yeoman-test "
+                               "without actually classifying anything"},
+        "outputs": {"expected_tool": "preview_classification", "before": None,
+                    "must_not_call": "classify_all"},
+    },
+    # 9 - bounded collect -> user gave a count, must NOT redundantly count first
+    {
+        "inputs":  {"request": "collect the 50 most recent issues from yeoman/yeoman-test"},
+        "outputs": {"expected_tool": "collect_all", "before": None,
+                    "must_not_call": "count_issues"},
+    },
+    # 10 - unbounded collect, large repo (5000 >= 1000): counts, must pause for
+    #      confirmation -> collect_all must NOT run within this single turn
+    {
+        "inputs":  {"request": "collect issues from yeoman/yeoman-test",
+                    "count_issues_returns": 5000},
+        "outputs": {"expected_tool": "count_issues", "before": None,
+                    "must_not_call": "collect_all"},
     },
 ]
 
@@ -107,8 +164,11 @@ def ensure_dataset(client: Client):
         return
     dataset = client.create_dataset(
         dataset_name=DATASET_NAME,
-        description="Request -> expected tool call (with ordering) "
-                    "for InEx-Bug-Agent orchestration validation.",
+        description="Request -> expected tool call (with ordering and negative "
+                    "constraints) for InEx-Bug-Agent orchestration validation. "
+                    "Covers all 7 tool functions, standalone count, standalone "
+                    "preview, bounded collection, multi-turn confirm/decline, and "
+                    "the large-repo collect confirmation gate.",
     )
     client.create_examples(dataset_id=dataset.id, examples=EXAMPLES)
     print(f"Created dataset '{DATASET_NAME}' with {len(EXAMPLES)} examples.")
@@ -117,11 +177,11 @@ def ensure_dataset(client: Client):
 def build_agent():
     from tools.langchain_tools import (
         collect_all, count_issues, classify_all, preview_classification,
-        snapshot_dependencies, run_sql, describe_schema, export_data, db,
+        snapshot_dependencies, run_sql, export_data,
     )
     with open(systemPrompt, "r", encoding="utf-8") as f:
         base_prompt = f.read()
-    system_prompt = base_prompt + "\n\n" + build_db_summary(db)
+    system_prompt = base_prompt
 
     llm = ChatOllama(model=orchestrator, temperature=temperature)
     mem_conn = sqlite3.connect(":memory:", check_same_thread=False)
@@ -130,13 +190,13 @@ def build_agent():
     return create_agent(
         model=llm,
         tools=[collect_all, count_issues, classify_all, preview_classification,
-               snapshot_dependencies, run_sql, describe_schema, export_data],
+               snapshot_dependencies, run_sql, export_data],
         system_prompt=system_prompt,
         checkpointer=checkpointer,
     )
 
 
-_AGENT = None 
+_AGENT = None
 
 
 def tool_call_sequence(messages):
@@ -154,20 +214,28 @@ def target(inputs: dict) -> dict:
         _AGENT = build_agent()
 
     config = {"configurable": {"thread_id": str(uuid.uuid4())}}
-    agent_inputs = {"messages": [{"role": "user", "content": inputs["request"]}]}
+    turns = inputs.get("turns") or [inputs["request"]]
+    count_return = inputs.get("count_issues_returns", DEFAULT_COUNT)
 
-    patches = [
-        patch("tools.helpers.collect.Collect.countIssues", return_value=45),
-        patch("tools.helpers.collect.Collect.collectAll", return_value=MOCK_COLLECT),
-        patch("tools.helpers.classify.Classify.classifyAll", return_value=MOCK_CLASSIFY),
-        patch("tools.helpers.classify.Classify.previewClassification", return_value=MOCK_PREVIEW),
-        patch("tools.core.dependencies.DependencySnapshotter.snapshot_for_classified",
-              return_value=MOCK_SNAPSHOT),
-    ]
-    with patches[0], patches[1], patches[2], patches[3], patches[4]:
-        result = _AGENT.invoke(agent_inputs, config=config)
+    all_tool_calls = []
+    prev_count = 0
 
-    return {"tool_calls": tool_call_sequence(result["messages"])}
+    with contextlib.ExitStack() as stack:
+        # count_issues return value is per-example so the large-repo gate
+        # (scenario 10) can be exercised distinctly from the small-repo case.
+        stack.enter_context(patch("tools.helpers.collect.Collect.countIssues", return_value=count_return))
+        stack.enter_context(patch("tools.helpers.collect.Collect.collectAll", return_value=MOCK_COLLECT))
+        stack.enter_context(patch("tools.helpers.classify.Classify.classifyAll", return_value=MOCK_CLASSIFY))
+        stack.enter_context(patch("tools.helpers.classify.Classify.previewClassification", return_value=MOCK_PREVIEW))
+        stack.enter_context(patch("tools.core.dependencies.DependencySnapshotter.snapshot_for_classified", return_value=MOCK_SNAPSHOT))
+
+        for turn in turns:
+            result = _AGENT.invoke({"messages": [{"role": "user", "content": turn}]}, config=config)
+            new_messages = result["messages"][prev_count:]
+            all_tool_calls.extend(tool_call_sequence(new_messages))
+            prev_count = len(result["messages"])
+
+    return {"tool_calls": all_tool_calls}
 
 
 def correct_tool(outputs: dict, reference_outputs: dict) -> dict:
@@ -192,6 +260,14 @@ def correct_ordering(outputs: dict, reference_outputs: dict) -> dict:
         "score": calls.index(before) < calls.index(expected),
     }
 
+
+def must_not_appear(outputs: dict, reference_outputs: dict) -> dict:
+    blocked = reference_outputs.get("must_not_call")
+    if blocked is None:
+        return {"key": "must_not_appear", "score": True}
+    return {"key": "must_not_appear", "score": blocked not in outputs.get("tool_calls", [])}
+
+
 def main():
     seed_test_db()
     client = Client()
@@ -200,9 +276,9 @@ def main():
     results = client.evaluate(
         target,
         data=DATASET_NAME,
-        evaluators=[correct_tool, correct_ordering],
+        evaluators=[correct_tool, correct_ordering, must_not_appear],
         experiment_prefix="inex-agent-routing",
-        max_concurrency=1,  # one Ollama instance; keep serial
+        max_concurrency=1,
     )
     print(results)
 
