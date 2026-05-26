@@ -85,7 +85,7 @@ def seed_test_db():
 
 #   expected_tool          -> tool that must appear in the call sequence
 #   before                 -> prerequisite tool that must precede expected_tool
-#   must_not_call          -> tool that must NOT appear
+
 EXAMPLES = [
     # 1 - unbounded collect, small repo (45 < 1000): counts then proceeds
     {
@@ -205,7 +205,6 @@ _AGENT = None
 
 
 def tool_call_sequence(messages):
-    """Ordered names of tools the agent actually invoked."""
     seq = []
     for m in messages:
         for tc in getattr(m, "tool_calls", None) or []:
@@ -226,8 +225,6 @@ def target(inputs: dict) -> dict:
     prev_count = 0
 
     with contextlib.ExitStack() as stack:
-        # count_issues return value is per-example so the large-repo gate
-        # (scenario 10) can be exercised distinctly from the small-repo case.
         stack.enter_context(patch("tools.helpers.collect.Collect.countIssues", return_value=count_return))
         stack.enter_context(patch("tools.helpers.collect.Collect.collectAll", return_value=MOCK_COLLECT))
         stack.enter_context(patch("tools.helpers.classify.Classify.classifyAll", return_value=MOCK_CLASSIFY))
