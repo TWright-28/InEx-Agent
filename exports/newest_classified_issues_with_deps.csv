@@ -1,0 +1,6 @@
+issue_number,title,classification,direct_count
+180,Alternatives for Deprecated Methods,Not a Bug,9
+183,getSnapshot with filter also adds .ejs files in the snap file,Extrinsic,9
+195,Every package whose major version larger than 6 is not work,Extrinsic,9
+212,Where did  `generator.destinationRoot` move to?,Extrinsic,7
+242,Bun support,Not a Bug,6

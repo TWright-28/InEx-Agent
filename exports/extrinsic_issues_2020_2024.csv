@@ -1,0 +1,6 @@
+owner,repo,issue_number,title,classification,created_at
+ember-cli,ember-cli,9006,new addon (3.15.1) is failing most ember-try scenarios,Extrinsic,2020-01-03T10:11:12+00:00
+webpack,webpack,12340,Infinite rebuild loop in vagrant environment  in watch mode,Extrinsic,2021-01-05T16:22:14+00:00
+babel,babel,14112,[Bug]: Rogue 'let' statements in Babel package breaks ES5 support,Extrinsic,2022-01-07T09:58:20+00:00
+gatsbyjs,gatsby,37417,gatsby-source-wordpress fails to build development when sourcing from Local via https:// on GatsbyV5,Extrinsic,2023-01-08T23:35:14+00:00
+axios,axios,6164,High Severity security vulnerability in follow-redirects (Snyk),Extrinsic,2024-01-02T09:29:24+00:00

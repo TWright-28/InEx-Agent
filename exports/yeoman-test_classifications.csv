@@ -1,0 +1,4 @@
+issue_number,title,state,created_at,classification,classified_at
+101,Test runner fails on async,closed,2023-06-01T10:00:00Z,Intrinsic,2024-01-01T00:00:00
+102,Breaks after sinon upgrade,closed,2023-08-01T10:00:00Z,Extrinsic,2024-01-01T00:00:00
+103,How do I mock ES modules?,closed,2023-09-01T10:00:00Z,Not a Bug,2024-01-01T00:00:00

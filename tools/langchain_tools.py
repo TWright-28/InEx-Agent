@@ -1,8 +1,8 @@
 from tools.helpers.database import InExTool
 from tools.helpers.collect import Collect
 from tools.helpers.classify import Classify
-from tools.helpers.sqlQuery import runSql, describeSchema
-from config import DB_PATH, GITHUB_TOKEN, temperature, max_tokens, classifier, classifyPrompt
+from tools.helpers.sqlQuery import runSql, describeSchema, exportQuery
+from config import DB_PATH, GITHUB_TOKEN, temperature, classifier, classifyPrompt
 from langchain.tools import tool
 from tools.core.dependencies import DependencySnapshotter
 import sqlite3 
@@ -13,14 +13,6 @@ cl = Classify(classifier, temperature, classifyPrompt)
 snap = DependencySnapshotter()
 ro_conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True, check_same_thread=False)
 MAX_SQL_ROWS = 50
-
-@tool('get_stats', description="Collect the stats about classification distributions from the database", return_direct=False)
-def get_stats() -> str:
-    results = db.get_stats()
-    output = ""
-    for label, count in results:
-        output += f"{label}: {count}\n"
-    return output
 
 @tool('count_issues', description="Count the total number of issues from a github repo without collecting them. Use this before Collect_all to check if the repo is large. Input should be owner/repo. Note: counts above 1000 are reported as '1000+' due to GitHub API limits.")
 def count_issues(repoName: str) -> str:
@@ -54,7 +46,7 @@ def classify_all(repoName: str, count: int = None, start_date: str = None, end_d
         end_date = end_date + "T23:59:59Z"
     return cl.classifyAll(owner, repo, db, max_issues=count, start=start_date, end=end_date, direction=direction)
 
-@tool("snapshot_dependencies", description=("Snapshot npm direct/peer/dev dependencies for a project. Every classified issue is linked to the project version that was live at its creation date. Optionally also collect a slice of version history: last_n_versions (e.g. 10), or version_start/version_end (ISO dates, by version PUBLISH date). start_date/end_date filter which issues to link (by issue creation date). Transitive deps are NOT collected here - use get_transitive_dependencies for that. Requires classifications to exist."))
+@tool("snapshot_dependencies", description=("Fetch npm dependency data for a project and save it to the database. This tool does everything in one step: it contacts the npm registry, finds the package version that was live when each classified issue was filed, saves that version and its direct/peer/dev dependencies to the database, and links each issue to its version. You do NOT need versions in the database beforehand — this tool creates them. Requires classifications to exist. DO NOT pass last_n_versions, version_start, or version_end unless the user explicitly asks for extra version history — by default only snapshot the versions that issues map to."))
 def snapshot_dependencies(repo_name: str, npm_package: str, start_date: str = None, end_date: str = None, version_range: str = None, last_n_versions: int = None, version_start: str = None, version_end: str = None) -> dict:
     parts = repo_name.strip("/").split("/")
     if len(parts) != 2:
@@ -63,40 +55,6 @@ def snapshot_dependencies(repo_name: str, npm_package: str, start_date: str = No
     owner, repo = parts
     return snap.snapshot_for_classified(owner, repo, db, npm_package=npm_package,start=start_date, end=end_date, version_range=version_range,last_n_versions=last_n_versions,version_start=version_start, version_end=version_end)
 
-
-@tool("get_transitive_dependencies", description=("Walk and store the full transitive dependency tree for project versions that have already been snapshotted. Slow. Target one version (version='1.3.0') or a publish-date range (version_start/version_end ISO dates). Omit both to walk every snapshotted version. Versions that already have transitive data are skipped."))
-def get_transitive_dependencies(repo_name: str, npm_package: str,version: str = None, version_start: str = None,  version_end: str = None) -> dict:
-    parts = repo_name.strip("/").split("/")
-    if len(parts) != 2:
-        return {"status": "error", "code": "invalid_repo_format",
-                "received": repo_name}
-    owner, repo = parts
-    return snap.snapshot_transitive(owner, repo, db, npm_package=npm_package, version=version, version_start=version_start, version_end=version_end)
-    
-@tool("list_projects",description=("List all projects in the database that have at least one classification, with counts and the most recent issue date. Use this when the user asks what projects are available to analyze, or when you need to confirm a project exists before running other tools."),)
-def list_projects() -> dict:
-    db.cursor.execute("""
-        SELECT p.owner, p.repo, p.package_name, COUNT(DISTINCT c.id) AS classification_count, MAX(i.created_at) AS latest_issue
-        FROM projects p
-        INNER JOIN issues i ON i.project_id = p.id
-        INNER JOIN classifications c ON c.issue_id = i.id
-        GROUP BY p.id
-        ORDER BY classification_count DESC
-    """)
-    rows = db.cursor.fetchall()
-    return {
-        "status": "ok",
-        "projects": [
-            {
-                "owner": owner,
-                "repo": repo,
-                "npm_package": pkg,
-                "classification_count": count,
-                "latest_issue": latest,
-            }
-            for owner, repo, pkg, count, latest in rows
-        ],
-    }
 
 @tool("describe_schema", description=("Returns the database schema — every table and its columns. Call before writing a run_sql query so you use correct names." ))
 def describe_schema() -> dict:
@@ -116,3 +74,8 @@ def preview_classification(repo_name: str, count: int = None, start: str = None,
     if end and len(end) == 10:
         end = end + "T23:59:59Z"
     return cl.previewClassification(owner, repo, db, max_count=count, start=start, end=end, direction=direction)
+
+@tool("export_data", description=("Export the results of a SQL SELECT query to a file. Use when the user wants to save data for external analysis. query: a valid SELECT statement. format: 'csv' or 'json' (default 'csv'). filename: optional, auto-generated if omitted. No row limit — exports all matching rows. Files are written to the exports/ directory. Call describe_schema first if column names are needed."))
+def export_data(query: str, format: str = "csv", filename: str = None) -> dict:
+    return exportQuery(query, format, filename)
+
