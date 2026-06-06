@@ -210,4 +210,6 @@ marimo/_lsp/
 __marimo__/
 
 db/
-logs/
+logs/.env
+.env.*
+!.env.example
