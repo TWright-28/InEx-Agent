@@ -75,16 +75,6 @@ def seed_test_db():
     print("Test DB seeded.")
 
 
-# Each example may carry, in inputs:
-
-#   request                -> single-turn request, OR
-#   turns                  -> list of turns for a multi-turn scenario
-#   count_issues_returns   -> optional int the count_issues mock returns
-
-# and in outputs:
-
-#   expected_tool          -> tool that must appear in the call sequence
-#   before                 -> prerequisite tool that must precede expected_tool
 
 EXAMPLES = [
     # 1 - unbounded collect, small repo (45 < 1000): counts then proceeds
