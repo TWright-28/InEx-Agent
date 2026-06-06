@@ -2,13 +2,15 @@ name: AI Bug Classification
 
 on:
   issues:
-    types: [opened, closed]  # ← add closed
+    types: [opened, closed]
 
 jobs:
   classify:
     runs-on: ubuntu-latest
+
     permissions:
       issues: write
+      contents: read
 
     steps:
       - name: Classify issue with AI
@@ -18,16 +20,31 @@ jobs:
         with:
           script: |
             const issue = context.payload.issue;
+
+            // ── Safety guard for public repos ───────────────────────────────
+            // This prevents random public users from opening issues and using your Groq credits.
+            const allowedAssociations = ["OWNER", "MEMBER", "COLLABORATOR"];
+            const association = issue.author_association;
+
+            if (!allowedAssociations.includes(association)) {
+              core.info(`Skipping AI classification for external user: ${association}`);
+              return;
+            }
+
+            if (!process.env.GROQ_API_KEY) {
+              core.setFailed("Missing GROQ_API_KEY. Add it in GitHub repo secrets.");
+              return;
+            }
+
             const isClosed = issue.state === "closed";
             const labels = issue.labels.map(l => l.name).join(", ") || "None";
-            const authorRole = context.payload.sender.type;
+            const authorRole = association;
 
-            // ── Fetch comments if issue is closed ──────────────────────────
+            // ── Fetch comments and closing PR if issue is closed ────────────
             let commentsBlock = "";
             let closingPRBlock = "";
 
             if (isClosed) {
-              // Get all comments on the issue
               const comments = await github.rest.issues.listComments({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -37,17 +54,15 @@ jobs:
 
               if (comments.data.length > 0) {
                 commentsBlock = comments.data.map(c =>
-                  `- [${c.author_association}] ${c.user.login}: ${c.body}`
+                  `- [${c.author_association}] ${c.user.login}: ${c.body || ""}`
                 ).join("\n");
               }
 
-              // Look for linked closing PR via timeline events
               const timeline = await github.rest.issues.listEventsForTimeline({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issue.number,
-                per_page: 50,
-                mediaType: { previews: ["mockingbird"] }
+                per_page: 50
               });
 
               const closingPR = timeline.data.find(e =>
@@ -58,11 +73,13 @@ jobs:
 
               if (closingPR) {
                 const pr = closingPR.source.issue;
-                closingPRBlock = `**Closing PR:** #${pr.number} - "${pr.title}"\nPR Body: ${pr.body?.slice(0, 500) || "No description"}`;
+                closingPRBlock =
+                  `**Closing PR:** #${pr.number} - "${pr.title}"\n` +
+                  `PR Body: ${pr.body?.slice(0, 500) || "No description"}`;
               }
             }
 
-            // ── Build system prompt based on context ───────────────────────
+            // ── Build system prompt ─────────────────────────────────────────
             const systemPrompt = isClosed
               ? `# BUG CLASSIFICATION GUIDE
 
@@ -91,13 +108,13 @@ jobs:
 
             # KEY DECISION RULES
 
-            - **Maintainer comments are the strongest signal** — owners/members/collaborators state the real cause
-            - **Closing PR = strong evidence of real bug** — classify Intrinsic vs Extrinsic based on what it fixed
-            - **Temporal signals -> Extrinsic**: "after upgrading", "since version X", "works on X fails on Y"
-            - **Contract Rule**: If WE misuse an external API -> Intrinsic. If THEY changed the API -> Extrinsic
-            - **Intrinsic Evidence Gate**: Only choose Intrinsic if defect clearly originates in this repo's logic
-            - **Content > Labels**: Always trust content over labels
-            - **Questions/docs/features** -> Always Not a Bug
+            - Maintainer comments are the strongest signal.
+            - Closing PR is strong evidence of a real bug.
+            - Temporal signals -> Extrinsic: "after upgrading", "since version X", "works on X fails on Y".
+            - Contract Rule: If WE misuse an external API -> Intrinsic. If THEY changed the API -> Extrinsic.
+            - Intrinsic Evidence Gate: Only choose Intrinsic if defect clearly originates in this repo's logic.
+            - Content > Labels.
+            - Questions/docs/features -> Always Not a Bug.
 
             # REASONING FORMAT
 
@@ -124,14 +141,15 @@ jobs:
             # DEFINITIONS
 
             ## INTRINSIC - Root cause is inside this repository.
-            ## EXTRINSIC - Root cause is outside this repository (dependency/runtime/toolchain change).
-            ## NOT A BUG - Not a defect in this repo's production code (questions, docs, feature requests, test issues, user misuse).
+            ## EXTRINSIC - Root cause is outside this repository, such as dependency/runtime/toolchain change.
+            ## NOT A BUG - Not a defect in this repo's production code, such as questions, docs, feature requests, test issues, or user misuse.
 
             # KEY RULES
-            - Temporal signals -> Extrinsic: "after upgrading", "since version X", "works on X fails on Y"
-            - Contract Rule: WE misuse API -> Intrinsic. THEY changed API -> Extrinsic
-            - Questions/docs/features -> Always Not a Bug
-            - If too vague -> Low confidence, spread probabilities
+
+            - Temporal signals -> Extrinsic: "after upgrading", "since version X", "works on X fails on Y".
+            - Contract Rule: WE misuse API -> Intrinsic. THEY changed API -> Extrinsic.
+            - Questions/docs/features -> Always Not a Bug.
+            - If too vague -> Low confidence, spread probabilities.
 
             # REASONING FORMAT
 
@@ -155,6 +173,7 @@ jobs:
             **Title:** ${issue.title}
             **Author Role:** ${authorRole}
             **Labels:** ${labels}
+
             **Description:**
             ${issue.body || "No description provided."}
 
@@ -168,6 +187,7 @@ jobs:
             **Title:** ${issue.title}
             **Author Role:** ${authorRole}
             **Labels:** ${labels}
+
             **Description:**
             ${issue.body || "No description provided."}`;
 
@@ -189,12 +209,24 @@ jobs:
               })
             });
 
+            if (!res.ok) {
+              const errorText = await res.text();
+              core.setFailed(`Groq API request failed: ${res.status} ${res.statusText}. ${errorText.slice(0, 1000)}`);
+              return;
+            }
+
             const data = await res.json();
+
+            if (!data.choices || !data.choices[0]?.message?.content) {
+              core.setFailed(`Unexpected Groq response: ${JSON.stringify(data).slice(0, 1000)}`);
+              return;
+            }
+
             const reply = data.choices[0].message.content;
 
             const header = isClosed
-              ? "###  Final AI Classification (Issue Closed)"
-              : "###  Initial AI Classification (New Issue)";
+              ? "### Final AI Classification (Issue Closed)"
+              : "### Initial AI Classification (New Issue)";
 
             const footer = isClosed
               ? "*Final classification using full context: comments + closing PR.*"
