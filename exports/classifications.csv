@@ -1,0 +1,111 @@
+id,issue_id,classification,classification_probabilities,classification_raw_response,model,prompt_version,temperature,classified_at
+1,1,Extrinsic,{},"**Reasoning:**
+**Definition Check**: 
+- The issue is related to the `exports` field in the `package.json`, which affects how the module can be required. This does not involve logic errors or production code changes within this repository, making it a potential **Not a Bug**.
+  
+**Maintainer Signal**: 
+- Maintainer (mshima) states that the issue is fixed in version 10.1.0.
+
+**PR/Commit Evidence**: 
+- The issue was closed by updating to version 10.1.0, which suggests an external change affecting how modules are exported and required.
+  
+**Temporal Signals**: 
+- There's no explicit mention of a temporal signal like ""after upgrading"" or ""works on X fails on Y"", but the resolution is tied to a specific package version.
+
+**Contract Rule**: 
+- The issue is related to the `exports` field in the `package.json`, which is part of the module's configuration. This change does not indicate misuse of an external API; it’s more about adhering to modern module standards.
+
+**Information Completeness**: 
+- The issue description and maintainer comment provide sufficient context, but there are no detailed logs or stack traces provided by the user.
+
+**Decision**:
+Based on the maintainer's confirmation that the issue is fixed in a specific version (10.1.0), this appears to be an external change affecting how modules are required. The root cause is not within our production code, but rather in the module’s configuration and export behavior.
+
+**Confidence**: Medium
+
+**Final Answer:** Extrinsic",qwen2.5:7b-instruct,prompts/classification_prompt.md,0.2,2026-05-22T15:02:27.108996
+2,2,Not a Bug,{},"**Reasoning:**
+**Definition Check** - The issue is clearly a usage question and does not describe any defect in the production code. It asks how to change the current working directory within a test context, which falls under ""usage questions"" or ""documentation issues.""
+**Maintainer Signal** - Maintainer mshima provided guidance on how to achieve the desired behavior using process.chdir(), indicating this is a usage question.
+**PR/Commit Evidence** - There are no PRs or commits associated with this issue, as it was resolved by user feedback and guidance.
+**Temporal Signals** - No temporal signals related to version changes or external dependencies.
+**Contract Rule** - Not applicable since the issue does not involve misuse of an API or contract violation.
+**Information Completeness** - The issue provides clear context about what the user is trying to achieve, but it is a request for guidance rather than a defect report. There are no labels that contradict this interpretation.
+**Decision** - This is a usage question and not a bug in the production code.
+
+**Final Answer:** Not a Bug
+
+**Confidence:** High",qwen2.5:7b-instruct,prompts/classification_prompt.md,0.2,2026-05-22T15:03:05.633849
+3,3,Not a Bug,{},"**Reasoning:**
+**Definition Check**: 
+- The issue is about compatibility with Bun, which is an external runtime environment. This suggests the problem might be **Extrinsic** or **Not a Bug**, depending on whether it's a misuse of the library by the user or a genuine limitation.
+  
+**Maintainer Signal**: 
+- Maintainer comments indicate that the issue is related to the runtime environment and not directly within this repository’s codebase. Specifically, @mshima mentions that `node:test` support status for Bun is documented as missing: ""https://bun.sh/docs/runtime/nodejs-apis#node-test"". This suggests an external limitation rather than a bug in the library.
+
+**PR/Commit Evidence**: 
+- There are no closing PRs or commits addressing this issue, which means no production code changes were made to fix it. The maintainer suggested workarounds and noted that Bun is not officially supported by the project.
+
+**Temporal Signals**: 
+- No temporal signals like ""after upgrading"" or ""works on X fails on Y"" are present in the discussion.
+
+**Contract Rule**: 
+- The issue involves using a library (yeoman-test) with an unsupported runtime environment (Bun). This does not violate any contract within this repository but rather highlights a limitation of the external environment.
+
+**Information Completeness**: 
+- The maintainer provided clear information about why Bun is not supported and suggested workarounds. There are no missing versions, reproduction steps, or error logs that would make classification impossible.
+
+**Decision**: 
+The issue is related to using an unsupported runtime environment (Bun) with the library (yeoman-test). This falls under the category of **Not a Bug**, as it is not a defect in this repository's production code but rather a limitation due to external factors.
+
+**Confidence**: High
+
+**Final Answer:** Not a Bug",qwen2.5:7b-instruct,prompts/classification_prompt.md,0.2,2026-05-22T15:04:14.217803
+4,4,Extrinsic,{},"**Reasoning:**
+**Definition Check**: This issue is about the removal of an API method (`generator.destinationRoot`) and seeking guidance on how to replace it. The issue does not describe a defect in the repository's production code but rather a change in the external library's API.
+
+**Maintainer Signal**: Maintainer (mshima) provided information about where the API is located and noted that types are missing, indicating an upstream issue.
+
+**PR/Commit Evidence**: There is no closing PR or commit addressing this issue directly. The maintainer suggested checking the source code location for the method but did not provide a fix within the repository.
+
+**Temporal Signals**: No temporal signals like ""after upgrading"" or version changes are mentioned in the issue description.
+
+**Contract Rule**: The user was using an API correctly, and it has been removed by the library. This is an upstream change affecting our usage of the library.
+
+**Information Completeness**: The issue provides sufficient context about the removal of the method and seeks guidance on how to replace it. However, there are no production code changes or bug reports within this repository.
+
+**Decision**: This issue describes a defect in an external library (Yeoman) that we were using correctly but is now removed. We need to adapt our usage accordingly.
+
+**Confidence**: High - clear description of the API change and maintainer confirmation
+
+**Final Answer:** Extrinsic",qwen2.5:7b-instruct,prompts/classification_prompt.md,0.2,2026-05-22T15:05:02.196029
+5,5,Extrinsic,{},"**Reasoning:**
+**Definition Check**: 
+- The issue describes a breaking change in the `yeoman-test` package, which is an external dependency. This suggests that the problem might be due to changes in the behavior of this dependency rather than a bug within the `yeoman/yeoman-test` repository itself.
+- The maintainer explicitly states that the `main` field was removed starting from version 6.3.0 and that Jest no longer finds the entry file because it is now stored in the `dist` directory.
+
+**Maintainer Signal**: 
+- Maintainer comments indicate that this issue is due to a change in the package's structure, specifically the removal of the `main` field for ESM packages.
+- The maintainer also suggests that Jest requires specific configuration (`transformIgnorePatterns`) and that Mocha works out-of-the-box.
+
+**PR/Commit Evidence**: 
+- There are no closing PRs or commits addressing this issue within the `yeoman/yeoman-test` repository. Instead, the maintainer provided guidance on how to adapt to ESM changes.
+
+**Temporal Signals**: 
+- The issue mentions that the problem started after upgrading from a version less than 6.3.0 to a version greater than 6.3.0.
+- There is no ""works on X fails on Y"" pattern mentioned, but there is an explicit temporal signal indicating a change in behavior due to a version update.
+
+**Contract Rule**: 
+- The maintainer states that the `main` field was removed starting from version 6.3.0, which means the package now uses ESM by default.
+- This indicates that the usage of the package has changed according to its own documented migration path.
+
+**Information Completeness**: 
+- While there are no specific PRs or commits addressing this issue within `yeoman/yeoman-test`, the maintainer's comments provide clear guidance on how to adapt to the new version requirements.
+- The issue is well-defined, and the maintainer has provided a solution that involves updating Jest configuration.
+
+**Decision**: 
+Based on the maintainer's explicit statement about the external change (removal of `main` field) and the guidance provided for adapting to ESM changes, this issue should be classified as **Extrinsic**. The root cause is an external change in the behavior of the `yeoman-test` package.
+
+**Confidence**: High
+
+**Final Answer:** Extrinsic",qwen2.5:7b-instruct,prompts/classification_prompt.md,0.2,2026-05-22T15:06:45.737026

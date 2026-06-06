@@ -1,7 +1,6 @@
-from langchain_ollama import ChatOllama
-from config import orchestrator, temperature, systemPrompt
+from config import orchestrator, temperature, systemPrompt, num_ctx
 from langchain.agents import create_agent
-from tools.langchain_tools import get_stats, collect_all, classify_all, count_issues, snapshot_dependencies, get_transitive_dependencies, list_projects, run_sql, describe_schema, dependency_risk, db
+from tools.langchain_tools import collect_all, classify_all, count_issues, preview_classification, snapshot_dependencies, run_sql, export_data
 from langgraph.checkpoint.sqlite import SqliteSaver
 import logging
 import logging.config
@@ -9,8 +8,6 @@ import json
 import os
 import uuid
 import sqlite3
-from db_summary import build_db_summary
-from langgraph.types import Command
 
 with open("loggingConfigs/config.json") as f:
     logging.config.dictConfig(json.load(f))
@@ -18,12 +15,19 @@ with open("loggingConfigs/config.json") as f:
 with open(systemPrompt, "r", encoding="utf-8") as f:
     base_prompt = f.read()
 
-system_prompt = base_prompt + "\n\n" + build_db_summary(db)
+system_prompt = base_prompt
 
-llm = ChatOllama(
-    model= orchestrator,
-    temperature= temperature
-)
+
+def build_llm():
+    provider, _, model_name = orchestrator.partition(":")
+    if provider == "ollama":
+        from langchain_ollama import ChatOllama
+        return ChatOllama(model=model_name, temperature=temperature, num_ctx=num_ctx)
+    from langchain.chat_models import init_chat_model
+    return init_chat_model(orchestrator, temperature=temperature)
+
+
+llm = build_llm()
 
 # checkpointer for our orch model to understand prior context
 os.makedirs("db", exist_ok=True)
@@ -33,10 +37,10 @@ checkpointer = SqliteSaver(checkpoint_conn)
 
 agent = create_agent(
     model=llm,
-    tools= [get_stats, collect_all, count_issues, classify_all, snapshot_dependencies, get_transitive_dependencies, list_projects, run_sql, describe_schema, dependency_risk],
+    tools= [collect_all, count_issues, classify_all, preview_classification, snapshot_dependencies, run_sql, export_data,],
     system_prompt=system_prompt,
-    checkpointer= checkpointer,
-) 
+    checkpointer=checkpointer,
+)
 
 thread_id = str(uuid.uuid4())
 config = {"configurable": {"thread_id": thread_id}}

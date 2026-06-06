@@ -4,11 +4,10 @@ import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import requests
-from tools.core.npm_registry import (Registry, fetchFull, sortVersionsDesc, buildTransitive, MAX_TRANSITIVE_NODES,)
+from tools.core.npm_registry import fetchFull, sortVersionsDesc
 
 logger = logging.getLogger(__name__)
 
-CACHE_DIR = Path(".npm_cache")
 DOC_CACHE_DIR = Path(".npm_doc_cache")
 
 
@@ -23,7 +22,6 @@ class DependencySnapshotter:
 
     def __init__(self):
         self.session = requests.Session()
-        self.registry = Registry(CACHE_DIR)
 
     def resolve_package_name(self, db, project_id, npm_package):
         cached = db.getPackageName(project_id)
@@ -114,8 +112,6 @@ class DependencySnapshotter:
             "direct": len(direct),
             "peer": len(peer),
             "dev": len(dev),
-            "transitive": None,          
-            "transitive_truncated": None, 
         }
         raw_manifest = {
             "dependencies": direct,
@@ -143,8 +139,9 @@ class DependencySnapshotter:
         version_start = _clean(version_start)
         version_end = _clean(version_end)
 
-        db.cursor.execute("SELECT id FROM projects WHERE owner = ? AND repo = ?", (owner, repo))
-        row = db.cursor.fetchone()
+        cur = db.connection.cursor()
+        cur.execute("SELECT id FROM projects WHERE owner = ? AND repo = ?", (owner, repo))
+        row = cur.fetchone()
         if not row:
             return {"status": "error", "code": "project_not_found",
                     "owner": owner, "repo": repo}
@@ -242,84 +239,3 @@ class DependencySnapshotter:
             },
         }
 
-    def snapshot_transitive(self, owner, repo, db, npm_package, version=None, version_start=None, version_end=None) -> dict:
-        version = _clean(version)
-        version_start = _clean(version_start)
-        version_end = _clean(version_end)
-
-        db.cursor.execute("SELECT id FROM projects WHERE owner = ? AND repo = ?", (owner, repo))
-        row = db.cursor.fetchone()
-        if not row:
-            return {"status": "error", "code": "project_not_found","owner": owner, "repo": repo}
-        project_id = row[0]
-
-        if version:
-            db.cursor.execute("SELECT id, version, published_at, transitive_count FROM versions WHERE project_id = ? AND version = ?", (project_id, version))
-        elif version_start or version_end:
-            q = ("SELECT id, version, published_at, transitive_count FROM versions WHERE project_id = ?")
-            params = [project_id]
-            if version_start:
-                q += " AND published_at >= ?"
-                params.append(version_start)
-            if version_end:
-                q += " AND published_at <= ?"
-                params.append(version_end)
-            db.cursor.execute(q, params)
-        else:
-            db.cursor.execute("SELECT id, version, published_at, transitive_count FROM versions WHERE project_id = ?", (project_id,))
-
-        targets = db.cursor.fetchall()
-        if not targets:
-            return {"status": "error", "code": "no_matching_versions","owner": owner, "repo": repo}
-
-        walked = 0
-        skipped_already = 0
-        skipped_no_publish_date = 0
-        total_unresolved = 0
-
-        for version_id, version_str, published_at, transitive_count in targets:
-            if transitive_count is not None:
-                skipped_already += 1
-                continue
-            if not published_at:
-                skipped_no_publish_date += 1
-                logger.warning("  %s@%s has no published_at; skipping transitive", npm_package, version_str)
-                continue
-
-            # overlapping check for if wehave already done a transiticve walk 
-            db.cursor.execute("DELETE FROM version_dependencies WHERE version_id = ? AND dep_kind = 'transitive'", (version_id,))
-            db.connection.commit()
-            db.cursor.execute("SELECT dep_name, dep_version_range FROM version_dependencies WHERE version_id = ? AND dep_kind = 'direct'", (version_id,))
-            direct = {name: rng for name, rng in db.cursor.fetchall()}
-
-            nodes, truncated, unresolved = buildTransitive(self.registry, direct, published_at, MAX_TRANSITIVE_NODES)
-
-            rows = []
-            for name, info in nodes.items():
-                for root, depth_via_root in info["roots"].items():
-                    if depth_via_root == 0:
-                        continue  # direct dep is its own root
-                    rows.append((
-                        name,
-                        "transitive",
-                        info.get("range"),
-                        info.get("resolved_version"),
-                        depth_via_root,        # per-root depth
-                        root,                  # root_dep
-                    ))
-            db.save_dependencies(version_id, rows)
-            db.update_transitive_counts(version_id, len(rows), truncated)
-
-            walked += 1
-            total_unresolved += unresolved
-            logger.info("  Transitive walk %s@%s -> %d deps (truncated=%s, unresolved=%d)" ,npm_package, version_str, len(rows), truncated, unresolved)
-
-        return {
-            "status": "ok",
-            "owner": owner,
-            "repo": repo,
-            "versions_walked": walked,
-            "versions_already_had_transitive": skipped_already,
-            "versions_skipped_no_publish_date": skipped_no_publish_date,
-            "total_unresolved_edges": total_unresolved,
-        }
