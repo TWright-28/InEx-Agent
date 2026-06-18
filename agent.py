@@ -1,6 +1,6 @@
 from config import orchestrator, temperature, systemPrompt, num_ctx
 from langchain.agents import create_agent
-from tools.langchain_tools import collect_all, classify_all, count_issues, preview_classification, snapshot_dependencies, run_sql, export_data
+from tools.langchain_tools import collect_all, classify_all, count_issues, preview_classification, snapshot_dependencies, run_sql, export_data, preview_issue_list, import_issue_list
 from langgraph.checkpoint.sqlite import SqliteSaver
 import logging
 import logging.config
@@ -37,7 +37,7 @@ checkpointer = SqliteSaver(checkpoint_conn)
 
 agent = create_agent(
     model=llm,
-    tools= [collect_all, count_issues, classify_all, preview_classification, snapshot_dependencies, run_sql, export_data,],
+    tools= [collect_all, count_issues, classify_all, preview_classification, snapshot_dependencies, run_sql, export_data, preview_issue_list, import_issue_list,],
     system_prompt=system_prompt,
     checkpointer=checkpointer,
 )

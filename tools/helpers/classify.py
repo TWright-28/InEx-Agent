@@ -183,22 +183,9 @@ You must use this structure in your response:
 DO NOT REPEAT RAW FILE PATHS OR FULL STACK TRACE OUTPUTS.
 """
 
-    def classifyAll(self, owner, repo, db, max_issues = None, start = None, end = None, direction = "desc"):
-        
-        logger.info("Starting classification for %s/%s", owner, repo)
-
-        db.cursor.execute("SELECT id from projects where owner = ? and repo = ?", (owner, repo))
-        row = db.cursor.fetchone()
-        if not row: 
-            return f"Project {owner}/{repo} not found in database."
-        projectId = row[0]
-        
-        unclassified = db.getUnclassifiedInWindow(projectId, start, end, direction, max_issues)
-        if not unclassified:
-            return f"No unclassified issues found for {owner}/{repo} in the given window."
-
+    def _classifyRows(self, owner, repo, rows, db):
         classified = 0
-        for row in unclassified:
+        for row in rows:
             issue_id, number, title, body, state, state_reason, created_at, closed_at, raw_data_str = row
             raw_data = json.loads(raw_data_str) if raw_data_str else {}
 
@@ -217,7 +204,7 @@ DO NOT REPEAT RAW FILE PATHS OR FULL STACK TRACE OUTPUTS.
             logger.info("Classifying #%d: %s", number, title[:60])
 
             response = self.callOllama(self.base_prompt + "\n" + self.formatIssueData(issue), self.model_config)
-            label = self.extractLabel(response) 
+            label = self.extractLabel(response)
             if label is None:
                 logger.warning("Unable to classify #%d: %s", number, title[:60])
                 label = "Unknown"
@@ -225,25 +212,54 @@ DO NOT REPEAT RAW FILE PATHS OR FULL STACK TRACE OUTPUTS.
 
             probs = self.extractProbabilities(response)
 
-            if probs is None: 
+            if probs is None:
                 logger.warning("Unable to extract probabilities for #%d: %s", number, title[:60])
                 probs = {}
 
 
-            db.save_classification(issue_id, 
+            db.save_classification(issue_id,
             {
                 "classification": label,
                 "classification_probabilities": probs,
                 "classification_raw_response": response,
-            }, 
+            },
                 model = self.model_config["model_name"],
                 prompt= self.prompt_path,
                 temp =self.model_config["temperature"],
-                classifiedat= datetime.now().isoformat(), 
+                classifiedat= datetime.now().isoformat(),
             )
-            
+
             classified += 1
-            
+        return classified
+
+    def classifyAll(self, owner, repo, db, max_issues = None, start = None, end = None, direction = "desc"):
+
+        logger.info("Starting classification for %s/%s", owner, repo)
+
+        db.cursor.execute("SELECT id from projects where owner = ? and repo = ?", (owner, repo))
+        row = db.cursor.fetchone()
+        if not row:
+            return f"Project {owner}/{repo} not found in database."
+        projectId = row[0]
+
+        unclassified = db.getUnclassifiedInWindow(projectId, start, end, direction, max_issues)
+        if not unclassified:
+            return f"No unclassified issues found for {owner}/{repo} in the given window."
+
+        classified = self._classifyRows(owner, repo, unclassified, db)
+
+        logger.info("Finished classification for %s/%s: %d issues classified", owner, repo, classified)
+        return f"Classified {classified} issues from {owner}/{repo}."
+
+    def classifyByIds(self, owner, repo, issue_ids, db):
+        logger.info("Starting classification of %d specific issues for %s/%s", len(issue_ids), owner, repo)
+
+        rows = db.getIssuesByIds(issue_ids)
+        if not rows:
+            return f"No unclassified issues found among the given ids for {owner}/{repo}."
+
+        classified = self._classifyRows(owner, repo, rows, db)
+
         logger.info("Finished classification for %s/%s: %d issues classified", owner, repo, classified)
         return f"Classified {classified} issues from {owner}/{repo}."
         

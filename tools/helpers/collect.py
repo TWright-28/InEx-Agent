@@ -432,6 +432,42 @@ class Collect:
             "closing_commit": closingCommit,
         }
 
+    def collectSpecific(self, owner, repo, numbers, db):
+        logger.info("Collecting %d specific issues for %s/%s", len(numbers), owner, repo)
+        projectId = db.save_project(owner, repo)
+        collected, skipped, failed = 0, 0, 0
+        issueIds = []
+
+        for num in numbers:
+            db.cursor.execute("SELECT id FROM issues WHERE project_id = ? AND issue_number = ?", (projectId, num))
+            row = db.cursor.fetchone()
+            if row:
+                issueIds.append(row[0])
+                skipped += 1
+                continue
+
+            try:
+                issueData = self.collectIssue(owner, repo, num)
+            except requests.exceptions.HTTPError as e:
+                logger.warning("Failed to fetch %s/%s#%d: %s", owner, repo, num, e)
+                failed += 1
+                continue
+
+            if issueData is None:
+                failed += 1
+                continue
+
+            issueId = db.save_issue(projectId, issueData)
+            issueIds.append(issueId)
+            collected += 1
+
+            if collected % 10 == 0:
+                logger.info("  Collected %d/%d for %s/%s", collected, len(numbers), owner, repo)
+
+        logger.info("Finished specific collection for %s/%s: %d collected, %d skipped, %d failed",
+                     owner, repo, collected, skipped, failed)
+        return projectId, issueIds, collected, skipped, failed
+
     def collectAll(self, owner, repo, db, max_issues=None, start_date=None, end_date=None, direction="desc"):
         logger.info("Starting collection for %s\%s", owner, repo)
         projectId = db.save_project(owner, repo)

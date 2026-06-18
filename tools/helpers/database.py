@@ -211,6 +211,17 @@ class InExTool:
         cur.execute("UPDATE issues SET version_id = ? WHERE id = ?", (version_id, issue_id))
         self.connection.commit()
 
+    def getIssuesByIds(self, issue_ids):
+        if not issue_ids:
+            return []
+        cur = self.connection.cursor()
+        placeholders = ",".join("?" * len(issue_ids))
+        q = f"""SELECT i.id, i.issue_number, i.title, i.body, i.state, i.state_reason, i.created_at, i.closed_at, i.raw_data
+                FROM issues i LEFT JOIN classifications c ON c.issue_id = i.id
+                WHERE i.id IN ({placeholders}) AND c.id IS NULL"""
+        cur.execute(q, issue_ids)
+        return cur.fetchall()
+
     def getUnclassifiedInWindow(self, project_id, start=None, end=None, direction="desc", limit=None):
         cur = self.connection.cursor()
         q = "SELECT i.id, i.issue_number, i.title, i.body, i.state, i.state_reason, i.created_at, i.closed_at, i.raw_data FROM issues i LEFT JOIN classifications c ON c.issue_id = i.id WHERE i.project_id = ? AND c.id IS NULL"

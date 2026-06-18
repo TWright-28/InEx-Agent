@@ -22,14 +22,14 @@ systemPrompt = "prompts/system_prompt.md"
 # Add matching API key to .env: OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY
 # Packages: pip install langchain-openai / langchain-anthropic / langchain-google-genai
 
-orchestrator = "ollama:gpt-oss:20B"
+# orchestrator = "ollama:gpt-oss:20B"
 # orchestrator = "openai:gpt-4o"
 # orchestrator = "anthropic:claude-sonnet-4-6"
-# orchestrator = "google_genai:gemini-2.5-flash"
+orchestrator = "google_genai:gemini-2.5-flash"
 
 # classifier always runs locally via Ollama
-# classifier = "qwen3:30b"
-classifier = "qwen2.5:7b-instruct"
+classifier = "qwen3:30b"
+# classifier = "qwen2.5:7b-instruct"
 
 temperature = 0.2
 num_ctx = 131072  # only applied when orchestrator uses Ollama

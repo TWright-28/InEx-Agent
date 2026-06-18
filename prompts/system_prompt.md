@@ -65,6 +65,27 @@ any step (for example, collect more issues later, or classify in batches).
   "asc" oldest-first). With a count or date range given, the request is
   bounded. A long-running operation.
 
+## Importing a specific list of issues from a CSV
+
+Use these when the user has a CSV file naming specific issues to bring in
+(a column of "owner/repo#number" references, e.g. "astropy/astropy#12906"),
+rather than collecting a whole repo. The CSV may span many repositories.
+
+- preview_issue_list: parses the CSV and reports how many issues it names, a
+  per-repo breakdown, how many are already in the database, and any rows that
+  could not be parsed. Read-only and fast — collects nothing. Input: csv_path
+  (optional column to name the column).
+- import_issue_list: collects each named issue from GitHub (skipping ones
+  already in the database) and then classifies it. SLOW — GitHub API calls
+  plus one LLM call per issue. Input: csv_path. Optional: column; classify
+  (default true; set false to collect only). This does collection AND
+  classification in one call, so you do NOT need to follow it with
+  classify_all. Call preview_issue_list first, show the user the breakdown,
+  and proceed once they confirm.
+
+After import_issue_list, the data is ready for snapshot_dependencies (per
+repo) and analysis, exactly like collect_all + classify_all output.
+
 ## Classifying issues
 
 - preview_classification: shows what classify_all would classify — the count,
@@ -130,7 +151,9 @@ After step 3 the data is ready for analysis via run_sql or export_data.
    tell the user and ask. classify_all is slow: call preview_classification
    first, show the user what will be classified, and proceed once they
    confirm. A request the user has already bounded or already confirmed does
-   not need to be re-checked.
+   not need to be re-checked. import_issue_list is likewise slow: call
+   preview_issue_list first, show the user the breakdown, and proceed once
+   they confirm.
 
 6. Read structured tool output before replying. Many tools return a result
    with a "status" field. On "error", explain what went wrong and what the
