@@ -27,8 +27,10 @@ systemPrompt = "prompts/system_prompt.md"
 # orchestrator = "anthropic:claude-sonnet-4-6"
 orchestrator = "google_genai:gemini-2.5-flash"
 
-# classifier always runs locally via Ollama
-classifier = "qwen3:30b"
+# classifier: bare name (e.g. "qwen3:30b") runs locally via Ollama;
+# "provider:model" (e.g. "google_genai:gemini-2.5-flash") runs in the cloud.
+classifier = "google_genai:gemini-2.5-pro"
+# classifier = "qwen3:30b"
 # classifier = "qwen2.5:7b-instruct"
 
 temperature = 0.2

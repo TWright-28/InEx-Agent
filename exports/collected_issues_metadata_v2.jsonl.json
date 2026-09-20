@@ -1,0 +1,302 @@
+[
+  {
+    "owner": "babel",
+    "repo": "babel",
+    "issue_number": 7178,
+    "title": "babel-transform-react-inline-elements broken since beta35 due to #6984",
+    "state": "closed",
+    "created_at": "2018-01-09T12:04:13Z",
+    "issue_id": 1,
+    "version_id": null
+  },
+  {
+    "owner": "ember-cli",
+    "repo": "ember-cli",
+    "issue_number": 6110,
+    "title": "ember addon test-addon -> EACCES: permission denied, open ...package.json",
+    "state": "closed",
+    "created_at": "2016-07-26T20:15:04Z",
+    "issue_id": 2,
+    "version_id": null
+  },
+  {
+    "owner": "ember-cli",
+    "repo": "ember-cli",
+    "issue_number": 348,
+    "title": "Strange prompt when running ember-cli for the first time",
+    "state": "closed",
+    "created_at": "2014-04-13T03:50:43Z",
+    "issue_id": 3,
+    "version_id": null
+  },
+  {
+    "owner": "ember-cli",
+    "repo": "ember-cli",
+    "issue_number": 6780,
+    "title": "Document `Addon` model `init` method.",
+    "state": "closed",
+    "created_at": "2017-02-16T21:45:23Z",
+    "issue_id": 4,
+    "version_id": null
+  },
+  {
+    "owner": "eslint",
+    "repo": "eslint",
+    "issue_number": 6405,
+    "title": "strict: function should not warn functions which have a non-simple parameter",
+    "state": "closed",
+    "created_at": "2016-06-14T00:24:54Z",
+    "issue_id": 5,
+    "version_id": null
+  },
+  {
+    "owner": "eslint",
+    "repo": "eslint",
+    "issue_number": 1533,
+    "title": "ES6JSX branch gives no-multi-str errors on JSX",
+    "state": "closed",
+    "created_at": "2014-11-29T18:23:54Z",
+    "issue_id": 6,
+    "version_id": null
+  },
+  {
+    "owner": "eslint",
+    "repo": "eslint",
+    "issue_number": 7473,
+    "title": "Version 3.9.0 broke multiline array indentation",
+    "state": "closed",
+    "created_at": "2016-10-28T22:35:40Z",
+    "issue_id": 7,
+    "version_id": null
+  },
+  {
+    "owner": "eslint",
+    "repo": "eslint",
+    "issue_number": 1234,
+    "title": "vars-on-top documentation is lying",
+    "state": "closed",
+    "created_at": "2014-09-09T14:30:36Z",
+    "issue_id": 8,
+    "version_id": null
+  },
+  {
+    "owner": "eslint",
+    "repo": "eslint",
+    "issue_number": 10033,
+    "title": "Add new \"kernel\" (K&R) option to brace-style rule",
+    "state": "closed",
+    "created_at": "2018-02-28T19:14:06Z",
+    "issue_id": 9,
+    "version_id": null
+  },
+  {
+    "owner": "eslint",
+    "repo": "eslint",
+    "issue_number": 10823,
+    "title": "Custom parser hook for code path analysis",
+    "state": "closed",
+    "created_at": "2018-09-01T23:16:17Z",
+    "issue_id": 10,
+    "version_id": null
+  },
+  {
+    "owner": "facebook",
+    "repo": "react",
+    "issue_number": 35138,
+    "title": "[Compiler Bug]: stable setter for useOptimistic",
+    "state": "closed",
+    "created_at": "2025-11-14T19:24:08Z",
+    "issue_id": 11,
+    "version_id": null
+  },
+  {
+    "owner": "facebook",
+    "repo": "react",
+    "issue_number": 29100,
+    "title": "[React 19] React Compiler doesn't preserve HTML Entities",
+    "state": "closed",
+    "created_at": "2024-05-16T09:19:30Z",
+    "issue_id": 12,
+    "version_id": null
+  },
+  {
+    "owner": "facebook",
+    "repo": "react",
+    "issue_number": 7803,
+    "title": "Upgrading to React v15.2.0 causes my development build to crash IE9",
+    "state": "closed",
+    "created_at": "2016-09-24T20:09:36Z",
+    "issue_id": 13,
+    "version_id": null
+  },
+  {
+    "owner": "facebook",
+    "repo": "react",
+    "issue_number": 957,
+    "title": "jsx --watch crash",
+    "state": "closed",
+    "created_at": "2014-01-23T11:29:36Z",
+    "issue_id": 14,
+    "version_id": null
+  },
+  {
+    "owner": "facebook",
+    "repo": "react",
+    "issue_number": 18072,
+    "title": "I'm working on React project.And i got these  errors ",
+    "state": "closed",
+    "created_at": "2020-02-19T07:16:14Z",
+    "issue_id": 15,
+    "version_id": null
+  },
+  {
+    "owner": "facebook",
+    "repo": "react",
+    "issue_number": 20195,
+    "title": "Inconsistency in hooks order using a JSX tag vs a function call",
+    "state": "closed",
+    "created_at": "2020-11-09T10:00:16Z",
+    "issue_id": 16,
+    "version_id": null
+  },
+  {
+    "owner": "facebook",
+    "repo": "react",
+    "issue_number": 1777,
+    "title": "Help with JSX -> JS transform without nodejs",
+    "state": "closed",
+    "created_at": "2014-07-02T20:48:37Z",
+    "issue_id": 17,
+    "version_id": null
+  },
+  {
+    "owner": "gatsbyjs",
+    "repo": "gatsby",
+    "issue_number": 15397,
+    "title": "ERROR #85901  GRAPHQL | gatsby-source-contentful requires Media uploaded to work",
+    "state": "closed",
+    "created_at": "2019-07-04T10:16:30Z",
+    "issue_id": 18,
+    "version_id": null
+  },
+  {
+    "owner": "gatsbyjs",
+    "repo": "gatsby",
+    "issue_number": 21482,
+    "title": "bug(www): Add missing <FooterLinks> from gatsbyjs.org pages",
+    "state": "closed",
+    "created_at": "2020-02-14T23:53:18Z",
+    "issue_id": 19,
+    "version_id": null
+  },
+  {
+    "owner": "gatsbyjs",
+    "repo": "gatsby",
+    "issue_number": 8757,
+    "title": "[starter library] Gatsby starter page crashes on site",
+    "state": "closed",
+    "created_at": "2018-10-03T14:21:46Z",
+    "issue_id": 20,
+    "version_id": null
+  },
+  {
+    "owner": "gatsbyjs",
+    "repo": "gatsby",
+    "issue_number": 25966,
+    "title": "gatsby info throws error UNHANDLED REJECTION e.filter is not a function",
+    "state": "closed",
+    "created_at": "2020-07-23T01:28:20Z",
+    "issue_id": 21,
+    "version_id": null
+  },
+  {
+    "owner": "gatsbyjs",
+    "repo": "gatsby",
+    "issue_number": 17737,
+    "title": "gatsby-plugin-mdx gives \"TypeError: createTypes is not a function\"",
+    "state": "closed",
+    "created_at": "2019-09-19T04:34:50Z",
+    "issue_id": 22,
+    "version_id": null
+  },
+  {
+    "owner": "gatsbyjs",
+    "repo": "gatsby",
+    "issue_number": 23542,
+    "title": "Running Gatsby build gives Error: 856328897 TypeError: promise.finally is not a function",
+    "state": "closed",
+    "created_at": "2020-04-27T20:53:43Z",
+    "issue_id": 23,
+    "version_id": null
+  },
+  {
+    "owner": "gatsbyjs",
+    "repo": "gatsby",
+    "issue_number": 22506,
+    "title": "(docs) Upgrade to Prettier 2.0",
+    "state": "closed",
+    "created_at": "2020-03-23T20:08:29Z",
+    "issue_id": 24,
+    "version_id": null
+  },
+  {
+    "owner": "gatsbyjs",
+    "repo": "gatsby",
+    "issue_number": 20945,
+    "title": "Styled Components + Gatsby Offline Plugin + Google Fonts",
+    "state": "closed",
+    "created_at": "2020-01-28T12:18:33Z",
+    "issue_id": 25,
+    "version_id": null
+  },
+  {
+    "owner": "gatsbyjs",
+    "repo": "gatsby",
+    "issue_number": 15692,
+    "title": "[gatsby-theme-blog] use deepmerge instead of lodash.merge",
+    "state": "closed",
+    "created_at": "2019-07-14T01:41:16Z",
+    "issue_id": 26,
+    "version_id": null
+  },
+  {
+    "owner": "webpack",
+    "repo": "webpack",
+    "issue_number": 2616,
+    "title": "SourceMap bug about inconsistent path processing",
+    "state": "closed",
+    "created_at": "2016-06-07T06:04:12Z",
+    "issue_id": 27,
+    "version_id": null
+  },
+  {
+    "owner": "webpack",
+    "repo": "webpack",
+    "issue_number": 13859,
+    "title": "Webpack fails with function parameter 'private' in ES5 script",
+    "state": "closed",
+    "created_at": "2021-07-25T17:55:30Z",
+    "issue_id": 28,
+    "version_id": null
+  },
+  {
+    "owner": "webpack",
+    "repo": "webpack",
+    "issue_number": 7774,
+    "title": "I got cannot find module '.' from Ionic 3",
+    "state": "closed",
+    "created_at": "2018-07-24T00:08:04Z",
+    "issue_id": 29,
+    "version_id": null
+  },
+  {
+    "owner": "webpack",
+    "repo": "webpack",
+    "issue_number": 3010,
+    "title": "Can't load SASS and CSS",
+    "state": "closed",
+    "created_at": "2016-09-19T08:37:07Z",
+    "issue_id": 30,
+    "version_id": null
+  }
+]

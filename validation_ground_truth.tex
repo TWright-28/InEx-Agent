@@ -1,0 +1,100 @@
+% Requires: \usepackage{booktabs}, \usepackage{tabularx}, \usepackage{amssymb}
+% (amssymb provides \dagger; booktabs/tabularx for the tables)
+
+\subsection{Ground-Truth Construction for Classifier Validation}
+\label{sec:ground-truth}
+
+To evaluate the automatic classifier we constructed a manually labelled
+gold-standard set of 30 issues, balanced across the three target categories
+(10 \emph{Intrinsic}, 10 \emph{Extrinsic}, 10 \emph{Not-a-Bug}). The issues were
+sampled from the larger collected corpus and each was labelled by hand,
+independently of the model. For every issue the annotator read the title and
+body, the maintainer discussion, and---decisively---the \emph{resolving pull
+request or commit}. The resolution is the strongest available signal for the
+root cause: it reveals whether the defect lay in the project's own code, in an
+external dependency or toolchain, or whether the report was not a production
+defect at all. Each issue was then assigned exactly one label according to the
+definitions in Table~\ref{tab:labels}, and the supporting evidence was recorded
+as a short rationale. Representative examples are shown in
+Table~\ref{tab:groundtruth}.
+
+\begin{table}[t]
+  \centering
+  \caption{Classification schema used by the human annotator to develop the
+           ground-truth labels.}
+  \label{tab:labels}
+  \begin{tabularx}{\linewidth}{@{}lX@{}}
+    \toprule
+    \textbf{Label} & \textbf{Definition (root cause of the issue)} \\
+    \midrule
+    Intrinsic  & Root cause is \emph{inside} the repository---a logic error,
+                 missing validation, or a regression from the project's own code. \\
+    Extrinsic  & Root cause is \emph{outside} the repository---a dependency,
+                 runtime, or toolchain change the project had to adapt to. \\
+    Not-a-Bug  & Not a defect in production code---usage questions,
+                 documentation, feature requests, test/CI issues, or user
+                 misconfiguration. \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\begin{table*}[t]
+  \centering
+  \caption{Representative ground-truth examples from the 30-issue validation
+           set. \emph{Ground truth} is the human label; \emph{Classifier} is the
+           label produced by the LLM. Rows marked $\dagger$ are the cases where
+           the classifier disagreed with the ground truth.}
+  \label{tab:groundtruth}
+  \begin{tabularx}{\linewidth}{@{}llXl@{}}
+    \toprule
+    \textbf{Issue} & \textbf{Ground truth} & \textbf{Evidence / rationale} & \textbf{Classifier} \\
+    \midrule
+    \multicolumn{4}{@{}l}{\emph{Intrinsic}}\\
+    \addlinespace[2pt]
+    gatsbyjs/gatsby\#15397        & Intrinsic & Worked around, then fixed by a later PR in Gatsby's own code.        & Intrinsic \\
+    eslint/eslint\#7473           & Intrinsic & Self-inflicted regression: v3.9.0 broke multi-line array indentation. & Intrinsic \\
+    ember-cli/ember-cli\#6110$\dagger$ & Intrinsic & \texttt{EACCES} on \texttt{package.json} traced to the tool's own file handling. & Not-a-Bug \\
+    \addlinespace[3pt]
+    \multicolumn{4}{@{}l}{\emph{Extrinsic}}\\
+    \addlinespace[2pt]
+    gatsbyjs/gatsby\#25966        & Extrinsic & Crash caused by an upstream package, not by Gatsby.                 & Extrinsic \\
+    webpack/webpack\#13859        & Extrinsic & Root cause in Terser, a dependency.                                & Extrinsic \\
+    facebook/react\#29100         & Extrinsic & Closing commit confirms the defect originates in Babel.            & Extrinsic \\
+    webpack/webpack\#2616$\dagger$ & Extrinsic & Inconsistent source-map paths caused by Babel.                     & Not-a-Bug \\
+    \addlinespace[3pt]
+    \multicolumn{4}{@{}l}{\emph{Not-a-Bug}}\\
+    \addlinespace[2pt]
+    ember-cli/ember-cli\#6780     & Not-a-Bug & Documentation request, not a code defect.                          & Not-a-Bug \\
+    facebook/react\#1777          & Not-a-Bug & Usage question (JSX transform without Node.js).                    & Not-a-Bug \\
+    eslint/eslint\#10823          & Not-a-Bug & Feature request (custom parser hook), no defect.                   & Not-a-Bug \\
+    \bottomrule
+  \end{tabularx}
+\end{table*}
+
+\subsubsection{Validation result}
+
+Against this ground truth the classifier agreed on 27 of the 30 issues
+(90\,\% overall). Per-class agreement is reported in Table~\ref{tab:agreement}.
+All three disagreements were of the same kind: the classifier assigned
+\emph{Not-a-Bug} to an issue the annotator judged a genuine defect
+(ember-cli\#6110, webpack\#2616, and gatsby\#20945), indicating a conservative
+bias toward \emph{Not-a-Bug} when the causal evidence is indirect. No
+\emph{Intrinsic}/\emph{Extrinsic} confusions occurred.
+
+\begin{table}[t]
+  \centering
+  \caption{Per-class agreement between the classifier and the human ground
+           truth on the 30-issue validation set.}
+  \label{tab:agreement}
+  \begin{tabular}{@{}lccc@{}}
+    \toprule
+    \textbf{Class} & \textbf{Ground-truth items} & \textbf{Correct} & \textbf{Agreement} \\
+    \midrule
+    Intrinsic  & 10 & 9  & 90\,\% \\
+    Extrinsic  & 10 & 8  & 80\,\% \\
+    Not-a-Bug  & 10 & 10 & 100\,\% \\
+    \midrule
+    \textbf{Overall} & 30 & 27 & \textbf{90\,\%} \\
+    \bottomrule
+  \end{tabular}
+\end{table}

@@ -38,7 +38,7 @@ def collect_all(repo_name: str, count: int = None, start_date: str = None, end_d
     return collector.collectAll(owner, repo, db, max_issues=count, start_date=start_date, end_date=end_date, direction=direction)
 
 
-@tool('classify_all', description="Classify unclassified issues for a repo already in the database. SLOW - each issue is an LLM call. Input: repo_name as 'owner/repo'. Optional: count (cap how many to classify in this run), start_date/end_date (ISO 'YYYY-MM-DD', filter by issue creation date), direction ('desc'/'asc'). Only classifies issues not already classified, so it can be run repeatedly to classify in batches. Call preview_classification first and confirm with the user before calling this.")
+@tool('classify_all', description="Classify unclassified issues for a repo already in the database. SLOW - each issue is an LLM call. Input: repo_name as 'owner/repo'. Optional: count (cap how many to classify in this run), start_date/end_date (ISO 'YYYY-MM-DD', filter by issue creation date), direction ('desc'/'asc'). 'Unclassified' means not yet classified BY THE CURRENT model, prompt and temperature, so changing any of those makes previously-done issues eligible again - preview_classification reports the true backlog as total_remaining, which can be very large. Failed attempts are retried automatically on a later run. Call preview_classification first, show the user total_remaining, and get explicit confirmation before calling this.")
 def classify_all(repoName: str, count: int = None, start_date: str = None, end_date: str = None, direction: str = "desc") -> str: 
     parts = repoName.strip("/").split("/")
     if len(parts) != 2:
@@ -67,7 +67,7 @@ def describe_schema() -> dict:
 def run_sql(query: str) -> dict:
     return runSql(query)
 
-@tool("preview_classification", description="Preview what classify_all would classify, WITHOUT classifying anything. Returns how many unclassified issues match the filters, their date span, and a small sample. Call before classify_all and show the user so they can confirm. Inputs: repo_name as 'owner/repo'. Optional: count, start_date, end_date (ISO 'YYYY-MM-DD'), direction ('desc'/'asc').")
+@tool("preview_classification", description="Preview what classify_all would classify, WITHOUT classifying anything. Returns would_classify (capped by count), total_remaining (the FULL backlog, ignoring count), the model and prompt_version being previewed for, the date span, and a small sample. Always show the user total_remaining before classify_all - it can be tens of thousands. Inputs: repo_name as 'owner/repo'. Optional: count, start_date, end_date (ISO 'YYYY-MM-DD'), direction ('desc'/'asc').")
 def preview_classification(repo_name: str, count: int = None, start: str = None, end: str = None, direction: str = "desc") -> dict:
     parts = repo_name.strip("/").split("/")
     if len(parts) != 2:
@@ -139,9 +139,14 @@ def import_issue_list(csv_path: str, column: str = None, classify: bool = True) 
         classified = 0
         if classify and issue_ids:
             cl.classifyByIds(owner, repo, issue_ids, db)
+            # Scope the count to this run's model/prompt/temperature and to rows that
+            # actually succeeded, otherwise legacy rows and failed attempts are both
+            # reported as newly classified.
             db.cursor.execute(
-                "SELECT COUNT(*) FROM classifications c JOIN issues i ON i.id=c.issue_id WHERE i.project_id=? AND i.issue_number IN (%s)" % ",".join("?" * len(nums)),
-                [project_id, *nums])
+                "SELECT COUNT(*) FROM classifications c JOIN issues i ON i.id=c.issue_id "
+                "WHERE i.project_id=? AND c.model=? AND c.prompt_version=? AND c.temperature=? "
+                "AND c.status='ok' AND i.issue_number IN (%s)" % ",".join("?" * len(nums)),
+                [project_id, classifier, cl.prompt_version, temperature, *nums])
             classified = db.cursor.fetchone()[0]
 
         totals["collected"] += collected

@@ -1,0 +1,31 @@
+issue_key,manual_classification,llm_classification,project,issue_number,title,url,notes,source_row_382,exists_in_428
+gatsbyjs/gatsby#15397,Intrinsic,Intrinsic,gatsby,15397,ERROR #85901  GRAPHQL | gatsby-source-contentful requires Media uploaded to work,https://github.com/gatsbyjs/gatsby/issues/15397,provided a workaround and than fixed later on in pr,6,FALSE
+eslint/eslint#6405,Intrinsic,Intrinsic,eslint,6405,strict: function should not warn functions which have a non-simple parameter,https://github.com/eslint/eslint/issues/6405,rule fix,47,FALSE
+eslint/eslint#1533,Intrinsic,Intrinsic,eslint,1533,ES6JSX branch gives no-multi-str errors on JSX,https://github.com/eslint/eslint/issues/1533,,50,FALSE
+ember-cli/ember-cli#6110,Intrinsic,Not a bug,embercli,6110,"ember addon test-addon -> EACCES: permission denied, open ...package.json",https://github.com/ember-cli/ember-cli/issues/6110,,53,FALSE
+facebook/react#35138,Intrinsic,Intrinsic,react,35138,[Compiler Bug]: stable setter for useOptimistic,https://github.com/facebook/react/issues/35138,,83,FALSE
+eslint/eslint#7473,Intrinsic,Intrinsic,eslint,7473,Version 3.9.0 broke multiline array indentation,https://github.com/eslint/eslint/issues/7473,,96,FALSE
+gatsbyjs/gatsby#21482,Intrinsic,Intrinsic,gatsby,21482,bug(www): Add missing <FooterLinks> from gatsbyjs.org pages,https://github.com/gatsbyjs/gatsby/issues/21482,FE bug on their website ,100,FALSE
+babel/babel#7178,Intrinsic,Intrinsic,babel,7178,babel-transform-react-inline-elements broken since beta35 due to #6984,https://github.com/babel/babel/issues/7178,,219,FALSE
+gatsbyjs/gatsby#8757,Intrinsic,Intrinsic,gatsby,8757,[starter library] Gatsby starter page crashes on site,https://github.com/gatsbyjs/gatsby/issues/8757,,309,FALSE
+ember-cli/ember-cli#348,Intrinsic,Intrinsic,embercli,348,Strange prompt when running ember-cli for the first time,https://github.com/ember-cli/ember-cli/issues/348,removed code tp hide random warnings,356,FALSE
+gatsbyjs/gatsby#25966,Extrinsic,Extrinsic,gatsby,25966,gatsby info throws error UNHANDLED REJECTION e.filter is not a function,https://github.com/gatsbyjs/gatsby/issues/25966,bug caused by upsteam packaed,7,FALSE
+webpack/webpack#2616,Extrinsic,Not a bug,webpack,2616,SourceMap bug about inconsistent path processing,https://github.com/webpack/webpack/issues/2616,babel issue ,42,FALSE
+gatsbyjs/gatsby#17737,Extrinsic,Extrinsic,gatsby,17737,"gatsby-plugin-mdx gives ""TypeError: createTypes is not a function""",https://github.com/gatsbyjs/gatsby/issues/17737,plugin api schema is incorrect,43,FALSE
+gatsbyjs/gatsby#23542,Extrinsic,Extrinsic,gatsby,23542,Running Gatsby build gives Error: 856328897 TypeError: promise.finally is not a function,https://github.com/gatsbyjs/gatsby/issues/23542,old gatsvy-cli dep breaks gatsby,72,FALSE
+gatsbyjs/gatsby#22506,Extrinsic,Extrinsic,gatsby,22506,(docs) Upgrade to Prettier 2.0,https://github.com/gatsbyjs/gatsby/issues/22506,"prettier update fix, commit has more info",125,FALSE
+facebook/react#29100,Extrinsic,Extrinsic,react,29100,[React 19] React Compiler doesn't preserve HTML Entities,https://github.com/facebook/react/issues/29100,commit confirms this is an issue caused by babel,126,FALSE
+webpack/webpack#13859,Extrinsic,Extrinsic,webpack,13859,Webpack fails with function parameter 'private' in ES5 script,https://github.com/webpack/webpack/issues/13859,terser bug,156,FALSE
+gatsbyjs/gatsby#20945,Extrinsic,Not a bug,gatsby,20945,Styled Components + Gatsby Offline Plugin + Google Fonts,https://github.com/gatsbyjs/gatsby/issues/20945,,209,FALSE
+facebook/react#7803,Extrinsic,Extrinsic,react,7803,Upgrading to React v15.2.0 causes my development build to crash IE9,https://github.com/facebook/react/issues/7803,"IE9 SRIPT ENGINE ISSUE, ",257,FALSE
+facebook/react#957,Extrinsic,Extrinsic,react,957,jsx --watch crash,https://github.com/facebook/react/issues/957,commoner bug breaking react,354,FALSE
+facebook/react#18072,Not a bug,Not a bug,react,18072,I'm working on React project.And i got these  errors,https://github.com/facebook/react/issues/18072,,8,FALSE
+ember-cli/ember-cli#6780,Not a bug,Not a bug,embercli,6780,Document `Addon` model `init` method.,https://github.com/ember-cli/ember-cli/issues/6780,doc support,18,FALSE
+webpack/webpack#7774,Not a bug,Not a bug,webpack,7774,I got cannot find module '.' from Ionic 3,https://github.com/webpack/webpack/issues/7774,,139,FALSE
+facebook/react#20195,Not a bug,Not a bug,react,20195,Inconsistency in hooks order using a JSX tag vs a function call,https://github.com/facebook/react/issues/20195,,153,FALSE
+eslint/eslint#1234,Not a bug,Not a bug,eslint,1234,vars-on-top documentation is lying,https://github.com/eslint/eslint/issues/1234,,194,FALSE
+gatsbyjs/gatsby#15692,Not a bug,Not a bug,gatsby,15692,[gatsby-theme-blog] use deepmerge instead of lodash.merge,https://github.com/gatsbyjs/gatsby/issues/15692,"using different file to make storage smaller, not a bug",279,FALSE
+facebook/react#1777,Not a bug,Not a bug,react,1777,Help with JSX -> JS transform without nodejs,https://github.com/facebook/react/issues/1777,q,295,FALSE
+eslint/eslint#10033,Not a bug,Not a bug,eslint,10033,"Add new ""kernel"" (K&R) option to brace-style rule",https://github.com/eslint/eslint/issues/10033,,357,FALSE
+webpack/webpack#3010,Not a bug,Not a bug,webpack,3010,Can't load SASS and CSS,https://github.com/webpack/webpack/issues/3010,,365,FALSE
+eslint/eslint#10823,Not a bug,Not a bug,eslint,10823,Custom parser hook for code path analysis,https://github.com/eslint/eslint/issues/10823,enhancement,380,FALSE

@@ -1,0 +1,27 @@
+% Requires: \usepackage{booktabs}, \usepackage{tabularx}, \usepackage{array}
+
+\begin{table*}[t]
+  \centering\small
+  \caption{Behavioural validation scenarios for the agent's tool routing. Each
+           row is one ground-truth example: the user request, the tool the agent
+           must call, an optional prerequisite that must precede it, an optional
+           tool that must \emph{not} be called, and the policy rule the scenario
+           probes. A dash ($-$) denotes no constraint.}
+  \label{tab:routing}
+  \begin{tabularx}{\linewidth}{@{}c >{\raggedright\arraybackslash}X l l l >{\raggedright\arraybackslash}X@{}}
+    \toprule
+    \textbf{\#} & \textbf{User request (scenario)} & \textbf{Expected tool} & \textbf{Must precede} & \textbf{Must not call} & \textbf{Decision rule probed} \\
+    \midrule
+    1  & Collect issues from a repo (small: 45 issues) & \texttt{collect\_all} & \texttt{count\_issues} & $-$ & Unbounded collect counts first; small repo then proceeds \\
+    2  & Get the dependency snapshot for a repo (npm package given) & \texttt{snapshot\_dependencies} & $-$ & $-$ & Snapshot on an already-classified project \\
+    3  & ``Classify the issues'' $\rightarrow$ ``yes, go ahead'' & \texttt{classify\_all} & \texttt{preview\_classification} & $-$ & Preview-then-confirm gate; user confirms \\
+    4  & ``Classify the issues'' $\rightarrow$ ``no, don't'' & \texttt{preview\_classification} & $-$ & \texttt{classify\_all} & Confirmation gate; user declines, no classify \\
+    5  & How many issues does the project have and what is the breakdown? & \texttt{run\_sql} & $-$ & $-$ & Analysis question routed to \texttt{run\_sql} \\
+    6  & Export the classification data to a CSV file & \texttt{export\_data} & $-$ & $-$ & Export routed to \texttt{export\_data}, not \texttt{run\_sql} \\
+    7  & How many issues does the repo have? & \texttt{count\_issues} & $-$ & \texttt{collect\_all} & Standalone count must not trigger collection \\
+    8  & Show what would be classified, without classifying anything & \texttt{preview\_classification} & $-$ & \texttt{classify\_all} & Standalone preview must not trigger classification \\
+    9  & Collect the 50 most recent issues from a repo & \texttt{collect\_all} & $-$ & \texttt{count\_issues} & Pre-bounded request skips the redundant count \\
+    10 & Collect issues from a repo (large: 5000 issues) & \texttt{count\_issues} & $-$ & \texttt{collect\_all} & Large-repo gate: count, then pause for confirmation \\
+    \bottomrule
+  \end{tabularx}
+\end{table*}

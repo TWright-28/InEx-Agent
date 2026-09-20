@@ -90,6 +90,14 @@ class InExTool:
             "ALTER TABLE versions ADD COLUMN peer_count INTEGER",
             "ALTER TABLE version_dependencies ADD COLUMN resolved_version TEXT",
             "ALTER TABLE version_dependencies ADD COLUMN root_dep TEXT",
+            # Outcome of the classification attempt. 'ok' means the label below came
+            # from the model; anything else means it did not, and `classification`
+            # is NULL. Legacy rows predate this column and are NULL -> treated as done.
+            "ALTER TABLE classifications ADD COLUMN status TEXT",
+            "ALTER TABLE classifications ADD COLUMN error TEXT",
+            "ALTER TABLE classifications ADD COLUMN validation_flags TEXT",
+            "ALTER TABLE classifications ADD COLUMN argmax_label TEXT",
+            "ALTER TABLE classifications ADD COLUMN attempts INTEGER",
         ]:
             try:
                 self.cursor.execute(alter)
@@ -143,14 +151,51 @@ class InExTool:
         return cur.fetchone()[0]
 
     def save_classification(self, issue_id, classification_data, model, prompt, temp, classifiedat):
+        """Persist one classification attempt.
+
+        `classification_data` may carry the outcome fields `status`, `error`,
+        `validation_flags`, `argmax_label` and `attempts`. When `status` is
+        anything other than 'ok' the caller must leave `classification` as None:
+        a failed attempt is never recorded as a taxonomy label.
+        """
         cur = self.connection.cursor()
         classification = classification_data.get("classification")
         probabilites = json.dumps(classification_data.get("classification_probabilities"))
         classification_raw = classification_data.get("classification_raw_response")
-        cur.execute("INSERT OR REPLACE INTO classifications(issue_id, classification, classification_probabilities, classification_raw_response, model, prompt_version, temperature, classified_at) VALUES(?,?,?,?,?,?,?,?)",
-            (issue_id, classification, probabilites, classification_raw, model, prompt, temp, classifiedat))
+        status = classification_data.get("status", "ok")
+        error = classification_data.get("error")
+        flags = classification_data.get("validation_flags")
+        flags = json.dumps(flags) if flags else None
+        argmax_label = classification_data.get("argmax_label")
+        attempts = classification_data.get("attempts")
+
+        if status != "ok" and classification is not None:
+            raise ValueError(
+                f"refusing to store classification {classification!r} with status {status!r}")
+
+        # Upsert rather than INSERT OR REPLACE: the latter deletes and reinserts,
+        # so classifications.id changes on every re-save.
+        cur.execute("""INSERT INTO classifications(
+                issue_id, classification, classification_probabilities,
+                classification_raw_response, model, prompt_version, temperature,
+                classified_at, status, error, validation_flags, argmax_label, attempts)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(issue_id, model, prompt_version, temperature) DO UPDATE SET
+                classification=excluded.classification,
+                classification_probabilities=excluded.classification_probabilities,
+                classification_raw_response=excluded.classification_raw_response,
+                classified_at=excluded.classified_at,
+                status=excluded.status,
+                error=excluded.error,
+                validation_flags=excluded.validation_flags,
+                argmax_label=excluded.argmax_label,
+                attempts=excluded.attempts""",
+            (issue_id, classification, probabilites, classification_raw, model, prompt,
+             temp, classifiedat, status, error, flags, argmax_label, attempts))
         self.connection.commit()
-        cur.execute("SELECT id FROM classifications WHERE issue_id = ?", (issue_id,))
+        cur.execute(
+            "SELECT id FROM classifications WHERE issue_id=? AND model=? AND prompt_version=? AND temperature=?",
+            (issue_id, model, prompt, temp))
         return cur.fetchone()[0]
 
     def setPackageName(self, project_id, package_name):
@@ -164,14 +209,23 @@ class InExTool:
         row = cur.fetchone()
         return row[0] if row else None
 
+    # Failed attempts live in `classifications` too, so every downstream aggregate
+    # must exclude them or it counts non-results as results. NULL = legacy row.
+    _SUCCEEDED = "(c.status IS NULL OR c.status = 'ok')"
+
     def projectHasClassifications(self, project_id):
         cur = self.connection.cursor()
-        cur.execute("SELECT 1 FROM classifications c INNER JOIN issues i ON i.id = c.issue_id WHERE i.project_id = ? LIMIT 1", (project_id,))
+        cur.execute("SELECT 1 FROM classifications c INNER JOIN issues i ON i.id = c.issue_id "
+                    f"WHERE i.project_id = ? AND {self._SUCCEEDED} LIMIT 1", (project_id,))
         return cur.fetchone() is not None
 
     def getClassificationIssueWindow(self, project_id, start=None, end=None):
         cur = self.connection.cursor()
-        q = "SELECT i.id, i.issue_number, i.created_at, i.version_id FROM issues i INNER JOIN classifications c ON c.issue_id = i.id WHERE i.project_id = ?"
+        # DISTINCT: an issue may carry one row per prompt_version now that
+        # prompt_version identifies content, and this returns issues, not rows.
+        q = ("SELECT DISTINCT i.id, i.issue_number, i.created_at, i.version_id FROM issues i "
+             "INNER JOIN classifications c ON c.issue_id = i.id "
+             f"WHERE i.project_id = ? AND {self._SUCCEEDED}")
         params = [project_id]
         if start:
             q += " AND i.created_at >= ?"
@@ -211,21 +265,50 @@ class InExTool:
         cur.execute("UPDATE issues SET version_id = ? WHERE id = ?", (version_id, issue_id))
         self.connection.commit()
 
-    def getIssuesByIds(self, issue_ids):
+    # An issue counts as already done for a run only if it has a row for THAT
+    # model/prompt/temperature which did not fail. The predicates live in the ON
+    # clause on purpose: moving them to WHERE would turn the LEFT JOIN into an
+    # inner join and match nothing. status IS NULL means a legacy row, treated as done.
+    _DONE_JOIN = """LEFT JOIN classifications c
+                           ON c.issue_id = i.id
+                          AND c.model = ? AND c.prompt_version = ? AND c.temperature = ?
+                          AND (c.status IS NULL OR c.status = 'ok')"""
+
+    _ISSUE_COLS = ("i.id, i.issue_number, i.title, i.body, i.state, i.state_reason, "
+                   "i.created_at, i.closed_at, i.raw_data")
+
+    def getIssuesByIds(self, issue_ids, model, prompt_version, temperature):
         if not issue_ids:
             return []
         cur = self.connection.cursor()
         placeholders = ",".join("?" * len(issue_ids))
-        q = f"""SELECT i.id, i.issue_number, i.title, i.body, i.state, i.state_reason, i.created_at, i.closed_at, i.raw_data
-                FROM issues i LEFT JOIN classifications c ON c.issue_id = i.id
+        q = f"""SELECT {self._ISSUE_COLS}
+                FROM issues i {self._DONE_JOIN}
                 WHERE i.id IN ({placeholders}) AND c.id IS NULL"""
-        cur.execute(q, issue_ids)
+        cur.execute(q, [model, prompt_version, temperature, *issue_ids])
         return cur.fetchall()
 
-    def getUnclassifiedInWindow(self, project_id, start=None, end=None, direction="desc", limit=None):
+    def countUnclassifiedInWindow(self, project_id, model, prompt_version, temperature,
+                                  start=None, end=None):
+        """Unbounded backlog count, so a preview can report the true total."""
         cur = self.connection.cursor()
-        q = "SELECT i.id, i.issue_number, i.title, i.body, i.state, i.state_reason, i.created_at, i.closed_at, i.raw_data FROM issues i LEFT JOIN classifications c ON c.issue_id = i.id WHERE i.project_id = ? AND c.id IS NULL"
-        params = [project_id]
+        q = f"SELECT COUNT(*) FROM issues i {self._DONE_JOIN} WHERE i.project_id = ? AND c.id IS NULL"
+        params = [model, prompt_version, temperature, project_id]
+        if start:
+            q += " AND i.created_at >= ?"
+            params.append(start)
+        if end:
+            q += " AND i.created_at <= ?"
+            params.append(end)
+        cur.execute(q, params)
+        return cur.fetchone()[0]
+
+    def getUnclassifiedInWindow(self, project_id, model, prompt_version, temperature,
+                                start=None, end=None, direction="desc", limit=None):
+        cur = self.connection.cursor()
+        q = (f"SELECT {self._ISSUE_COLS} FROM issues i {self._DONE_JOIN} "
+             "WHERE i.project_id = ? AND c.id IS NULL")
+        params = [model, prompt_version, temperature, project_id]
         if start:
             q += " AND i.created_at >= ?"
             params.append(start)

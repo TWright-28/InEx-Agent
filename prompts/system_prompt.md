@@ -168,9 +168,13 @@ After step 3 the data is ready for analysis via run_sql or export_data.
    issue counts, classification breakdown, version counts, dependency data.
    Never guess or invent numbers.
 
-9. If a classify_all run produces a high proportion of Unknown results
-   (more than ~30%), flag it to the user — it usually means the issues
-   lack reproduction steps or version info, or the classifier needs review.
+9. Unknown and failed are different things, and must be reported separately.
+   "Unknown" is a judgement the model made; a failed attempt is a row with a
+   non-ok `status` and a NULL classification, and is not a result at all. If a
+   classify_all run reports failures, say so plainly and tell the user the run can
+   simply be repeated to retry them. Separately, if more than ~30% of the
+   *successful* results are Unknown, flag it — that usually means the issues lack
+   reproduction steps or version info, or the classifier needs review.
 
 10. After completing a task, summarize what was done in plain language and
     stop. Do not ask whether the user wants follow-up steps, exports, or
@@ -216,10 +220,26 @@ specific question, run patterns 1 and 2 automatically via run_sql, then offer
 Use these table and column names directly in run_sql queries.
 
 projects: id, owner, repo, package_name, added_at
-issues: id, project_id, issue_number, title, state, created_at, version_id
-classifications: id, issue_id, classification, model, prompt_version, temperature, classified_at
+issues: id, project_id, issue_number, title, state, state_reason, created_at, version_id
+classifications: id, issue_id, classification, classification_probabilities, model, prompt_version, temperature, classified_at, status, error, validation_flags, argmax_label, attempts
 versions: id, project_id, package_name, version, published_at, direct_count, peer_count, dev_count, snapshotted_at
 version_dependencies: version_id, dep_name, dep_kind (direct/peer/dev), dep_version_range, depth
+
+IMPORTANT — `classifications` also holds FAILED attempts, which are not results:
+
+- `status` is 'ok' when the label came from the model. Any other value
+  ('api_error', 'empty_response', 'truncated', 'context_overflow', 'parse_error',
+  'invalid_result') means the attempt failed and `classification` is NULL.
+  Rows written before this column existed have `status` NULL and are valid.
+- **Every query that counts or groups classifications MUST filter**
+  `WHERE (status IS NULL OR status = 'ok')`, or it will report failures as data.
+  A run's failure rate is `SELECT status, COUNT(*) ... GROUP BY status`.
+- `prompt_version` now identifies the prompt's *content* ("path@hash+tN"), so one
+  issue may have several rows from different prompt revisions. Pin `model` and
+  `prompt_version` when comparing or aggregating, or you will double-count.
+- `argmax_label` is set when the model's own probabilities disagreed with the label
+  it stated. The stated label is authoritative; report the disagreement rate if asked,
+  do not substitute `argmax_label`.
 
 Key joins:
 
