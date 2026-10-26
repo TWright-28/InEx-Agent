@@ -1,51 +1,24 @@
-import os
-
-os.environ["DATABASE_URL"] = "db/eval_test.db"
-
-import contextlib
 import sqlite3
+import tempfile
 import uuid
-from unittest.mock import patch
+from dataclasses import replace
+from pathlib import Path
 
-from langchain.agents import create_agent
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langsmith import Client
 
-from config import num_ctx, orchestrator, systemPrompt, temperature
+from inex.agent.chat import build_agent
+from inex.app import build_app
+from inex.config import load_settings
+from inex.services.classification import ClassifyPreview, ClassifyResult
+from inex.services.collection import CollectResult, CountResult
+from inex.services.linkage import LinkResult
+from inex.store.database import Store
 
 DATASET_NAME = "InEx-Agent-v5"
-
-MOCK_COLLECT = "Collected 10 issues from yeoman/yeoman-test (skipped 0 already in DB)."
-MOCK_CLASSIFY = "Classified 10 issues from yeoman/yeoman-test."
-MOCK_PREVIEW = {
-    "status": "ok",
-    "owner": "yeoman",
-    "repo": "yeoman-test",
-    "would_classify": 10,
-    "earliest_created": "2023-01-01T00:00:00Z",
-    "latest_created": "2023-12-01T00:00:00Z",
-    "sample": [{"issue_number": 101, "title": "Test runner fails on async"}],
-}
-MOCK_SNAPSHOT = {
-    "status": "ok",
-    "package_name": "yeoman-test",
-    "owner": "yeoman",
-    "repo": "yeoman-test",
-    "issue_versions_snapshotted": 3,
-    "slice_versions_snapshotted": 0,
-    "linked_issues": 3,
-    "already_linked": 0,
-    "unlinkable_pre_release": 0,
-    "window": {
-        "start": None,
-        "end": None,
-        "version_range": None,
-        "last_n_versions": None,
-        "version_start": None,
-        "version_end": None,
-    },
-}
 DEFAULT_COUNT = 45
+EVAL_DIR = Path(tempfile.gettempdir()) / "inex_eval"
+EVAL_DB = EVAL_DIR / "eval_test.db"
 
 SEED_SQL = """
 INSERT OR IGNORE INTO projects(id, owner, repo, package_name, added_at)
@@ -79,15 +52,69 @@ VALUES
 """
 
 
-def seed_test_db():
-    from inex.store.database import Store
+class FakeCollection:
+    def __init__(self):
+        self.issue_count = DEFAULT_COUNT
 
-    Store("db/eval_test.db").close()
-    conn = sqlite3.connect("db/eval_test.db")
-    conn.executescript(SEED_SQL)
-    conn.commit()
-    conn.close()
-    print("Test DB seeded.")
+    def count(self, owner, repo):
+        return CountResult(owner, repo, self.issue_count)
+
+    def collect(self, owner, repo, **kwargs):
+        return CollectResult(collected=10, skipped=0)
+
+
+class FakeClassification:
+    def preview(self, owner, repo, **kwargs):
+        return ClassifyPreview(
+            owner,
+            repo,
+            would_classify=10,
+            total_remaining=10,
+            model="qwen3:30b",
+            prompt_version="inex@eval+t2",
+            earliest_created="2023-01-01T00:00:00Z",
+            latest_created="2023-12-01T00:00:00Z",
+            sample=({"issue_number": 101, "title": "Test runner fails on async"},),
+        )
+
+    def classify(self, owner, repo, **kwargs):
+        return ClassifyResult(owner, repo, classified=10, failed={})
+
+
+class FakeLinkage:
+    def link(self, owner, repo, package, **kwargs):
+        return LinkResult(package, 3, 0, 3, 0, 0)
+
+
+def seed_test_db():
+    if EVAL_DB.exists():
+        EVAL_DB.unlink()
+    Store(EVAL_DB).close()
+    connection = sqlite3.connect(EVAL_DB)
+    connection.executescript(SEED_SQL)
+    connection.commit()
+    connection.close()
+
+
+def build_eval_app():
+    settings = load_settings(database=EVAL_DB, exports_dir=EVAL_DIR / "exports")
+    return replace(
+        build_app(settings),
+        collection=FakeCollection(),
+        classification=FakeClassification(),
+        linkage=FakeLinkage(),
+    )
+
+
+_STATE = {}
+
+
+def eval_agent():
+    if "agent" not in _STATE:
+        _STATE["app"] = build_eval_app()
+        _STATE["saver"] = SqliteSaver.from_conn_string(":memory:")
+        _STATE["agent"] = build_agent(_STATE["app"], _STATE["saver"].__enter__())
+    return _STATE["app"], _STATE["agent"]
 
 
 EXAMPLES = [
@@ -210,52 +237,6 @@ def ensure_dataset(client: Client):
     print(f"Created dataset '{DATASET_NAME}' with {len(EXAMPLES)} examples.")
 
 
-def build_agent():
-    from tools.langchain_tools import (
-        classify_all,
-        collect_all,
-        count_issues,
-        export_data,
-        preview_classification,
-        run_sql,
-        snapshot_dependencies,
-    )
-
-    with open(systemPrompt, encoding="utf-8") as f:
-        base_prompt = f.read()
-    system_prompt = base_prompt
-
-    provider, _, model_name = orchestrator.partition(":")
-    if provider == "ollama":
-        from langchain_ollama import ChatOllama
-
-        llm = ChatOllama(model=model_name, temperature=temperature, num_ctx=num_ctx)
-    else:
-        from langchain.chat_models import init_chat_model
-
-        llm = init_chat_model(orchestrator, temperature=temperature)
-    mem_conn = sqlite3.connect(":memory:", check_same_thread=False)
-    checkpointer = SqliteSaver(mem_conn)
-
-    return create_agent(
-        model=llm,
-        tools=[
-            collect_all,
-            count_issues,
-            classify_all,
-            preview_classification,
-            snapshot_dependencies,
-            run_sql,
-            export_data,
-        ],
-        system_prompt=system_prompt,
-        checkpointer=checkpointer,
-    )
-
-
-_AGENT = None
-
-
 def tool_call_sequence(messages):
     seq = []
     for m in messages:
@@ -265,45 +246,15 @@ def tool_call_sequence(messages):
 
 
 def target(inputs: dict) -> dict:
-    global _AGENT
-    if _AGENT is None:
-        _AGENT = build_agent()
-
+    app, agent = eval_agent()
+    app.collection.issue_count = inputs.get("count_issues_returns", DEFAULT_COUNT)
     config = {"configurable": {"thread_id": str(uuid.uuid4())}}
-    turns = inputs.get("turns") or [inputs["request"]]
-    count_return = inputs.get("count_issues_returns", DEFAULT_COUNT)
-
     all_tool_calls = []
-    prev_count = 0
-
-    with contextlib.ExitStack() as stack:
-        stack.enter_context(
-            patch("tools.helpers.collect.Collect.countIssues", return_value=count_return)
-        )
-        stack.enter_context(
-            patch("tools.helpers.collect.Collect.collectAll", return_value=MOCK_COLLECT)
-        )
-        stack.enter_context(
-            patch("tools.helpers.classify.Classify.classifyAll", return_value=MOCK_CLASSIFY)
-        )
-        stack.enter_context(
-            patch(
-                "tools.helpers.classify.Classify.previewClassification", return_value=MOCK_PREVIEW
-            )
-        )
-        stack.enter_context(
-            patch(
-                "tools.core.dependencies.DependencySnapshotter.snapshot_for_classified",
-                return_value=MOCK_SNAPSHOT,
-            )
-        )
-
-        for turn in turns:
-            result = _AGENT.invoke({"messages": [{"role": "user", "content": turn}]}, config=config)
-            new_messages = result["messages"][prev_count:]
-            all_tool_calls.extend(tool_call_sequence(new_messages))
-            prev_count = len(result["messages"])
-
+    seen = 0
+    for turn in inputs.get("turns") or [inputs["request"]]:
+        result = agent.invoke({"messages": [{"role": "user", "content": turn}]}, config=config)
+        all_tool_calls.extend(tool_call_sequence(result["messages"][seen:]))
+        seen = len(result["messages"])
     return {"tool_calls": all_tool_calls}
 
 
@@ -341,7 +292,6 @@ def main():
     seed_test_db()
     client = Client()
     ensure_dataset(client)
-
     results = client.evaluate(
         target,
         data=DATASET_NAME,
