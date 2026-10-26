@@ -1,25 +1,11 @@
-"""Shared fixtures.
-
-DATABASE_URL must be set before anything imports config, because config reads it
-at import time and tools.helpers.sqlQuery opens a read-only connection on import.
-"""
-
 import os
-import sqlite3
 import sys
-import tempfile
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-
-_SCRATCH = Path(tempfile.gettempdir()) / "icsme_tests"
-_SCRATCH.mkdir(exist_ok=True)
-os.environ.setdefault("DATABASE_URL", str(_SCRATCH / "import_guard.db"))
-# The read-only connection cannot create the file, so it must already exist.
-sqlite3.connect(os.environ["DATABASE_URL"]).close()
 
 PROMPT = str(ROOT / "prompts" / "classification_prompt.md")
 
