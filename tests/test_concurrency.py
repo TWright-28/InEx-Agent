@@ -8,7 +8,7 @@ import threading
 import time
 
 import pytest
-from conftest import FULL_PROBS, PROMPT, row_for
+from conftest import FULL_PROBS, load_inex_profile, row_for
 
 
 @pytest.fixture
@@ -40,7 +40,9 @@ class RecordingDB:
 def make(workers, classify_one):
     from inex.services.classification import ClassificationService
 
-    cl = ClassificationService(None, PROMPT, "google_genai:gemini-2.5-pro", 0.2, workers=workers)
+    cl = ClassificationService(
+        None, load_inex_profile(), "google_genai:gemini-2.5-pro", 0.2, workers=workers
+    )
     cl.retry_wait = lambda *a, **k: 0
     cl._cloudStructured = lambda: None  # never build a real client
     cl.classifyOne = classify_one
@@ -153,7 +155,7 @@ class TestRaces:
                     raise AttemptFailure("parse_error", "transient", raw_text="p", retryable=True)
                 return _ok()
 
-        cl = Retryer(None, PROMPT, "qwen3:30b", 0.2, workers=8)
+        cl = Retryer(None, load_inex_profile(), "qwen3:30b", 0.2, workers=8)
         cl.retry_wait = lambda *a, **k: 0
         db = RecordingDB()
         tally = run(cl, rows, db)
@@ -179,7 +181,7 @@ class TestRaces:
                 self._cloudStructured()
                 return _ok()
 
-        cl = Counting(None, PROMPT, "google_genai:gemini-2.5-pro", 0.2, workers=8)
+        cl = Counting(None, load_inex_profile(), "google_genai:gemini-2.5-pro", 0.2, workers=8)
         run(cl, rows, RecordingDB())
         assert builds["n"] == 1
 
@@ -200,7 +202,7 @@ class TestResults:
 
         db, _, _ = seeded
         outcomes = iter([_ok(), ParsedResult(status="api_error", error="boom"), _ok()])
-        cl = ClassificationService(db, PROMPT, "qwen3:30b", 0.2)
+        cl = ClassificationService(db, load_inex_profile(), "qwen3:30b", 0.2)
         cl.classifyOne = lambda issue: next(outcomes)
         assert cl.classify("acme", "widget") == ClassifyResult(
             "acme", "widget", classified=2, failed={"api_error": 1}
@@ -210,7 +212,7 @@ class TestResults:
         from inex.services.classification import ClassificationService, ClassifyResult
 
         db, _, _ = seeded
-        cl = ClassificationService(db, PROMPT, "qwen3:30b", 0.2)
+        cl = ClassificationService(db, load_inex_profile(), "qwen3:30b", 0.2)
         cl.classifyOne = lambda issue: _ok()
         assert cl.classify("acme", "widget") == ClassifyResult("acme", "widget", 3, {})
 
@@ -218,7 +220,7 @@ class TestResults:
         from inex.errors import InexError
         from inex.services.classification import ClassificationService
 
-        cl = ClassificationService(db, PROMPT, "qwen3:30b", 0.2)
+        cl = ClassificationService(db, load_inex_profile(), "qwen3:30b", 0.2)
         for call in (cl.classify, cl.preview):
             with pytest.raises(InexError) as e:
                 call("nope", "nope")
@@ -228,7 +230,7 @@ class TestResults:
         from inex.services.classification import ClassificationService
 
         db, _, _ = seeded
-        preview = ClassificationService(db, PROMPT, "qwen3:30b", 0.2).preview(
+        preview = ClassificationService(db, load_inex_profile(), "qwen3:30b", 0.2).preview(
             "acme", "widget", count=2
         )
         assert (preview.would_classify, preview.total_remaining, len(preview.sample)) == (2, 3, 2)
@@ -237,7 +239,7 @@ class TestResults:
         from inex.services.classification import ClassificationService
 
         db, _, ids = seeded
-        cl = ClassificationService(db, PROMPT, "qwen3:30b", 0.2)
+        cl = ClassificationService(db, load_inex_profile(), "qwen3:30b", 0.2)
         cl.classifyOne = lambda issue: _ok()
         result = cl.classify_ids("acme", "widget", ids[:2])
         assert (result.classified, result.failed) == (2, {})
@@ -259,7 +261,12 @@ class TestResults:
             mod.requests, "post", lambda url, **k: seen.append(url) or EmptyResponse()
         )
         cl = mod.ClassificationService(
-            None, PROMPT, "qwen3:30b", 0.2, retries=1, ollama_base="http://example:1234"
+            None,
+            load_inex_profile(),
+            "qwen3:30b",
+            0.2,
+            retries=1,
+            ollama_base="http://example:1234",
         )
         assert cl.callModel("x").status == "empty_response"
         assert seen == ["http://example:1234/api/generate"]

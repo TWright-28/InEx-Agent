@@ -7,7 +7,8 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-PROMPT = str(ROOT / "profiles" / "inex_guide.md")
+INEX_PROFILE_PATH = ROOT / "profiles" / "inex.yaml"
+SEVERITY_PROFILE_PATH = ROOT / "profiles" / "example-severity.yaml"
 
 ENV_VARS = [
     "DATABASE_URL",
@@ -88,12 +89,39 @@ def settings(tmp_path):
     )
 
 
+def load_inex_profile():
+    from inex.services.profiles import load_profile
+
+    return load_profile(INEX_PROFILE_PATH)
+
+
+@pytest.fixture
+def inex_profile():
+    return load_inex_profile()
+
+
+@pytest.fixture
+def severity_profile():
+    from inex.services.profiles import load_profile
+
+    return load_profile(SEVERITY_PROFILE_PATH)
+
+
+@pytest.fixture
+def settings_with_bad_profile(settings, tmp_path):
+    from dataclasses import replace
+
+    bad = tmp_path / "bad.yaml"
+    bad.write_text("name: bad\nguide: missing.md\nlabels: []\n", encoding="utf-8")
+    return replace(settings, profile=bad)
+
+
 @pytest.fixture
 def classifier():
     """Ollama-path classifier: never reaches the network in these tests."""
     from inex.services.classification import ClassificationService
 
-    cl = ClassificationService(None, PROMPT, "qwen3:30b", 0.2, workers=1)
+    cl = ClassificationService(None, load_inex_profile(), "qwen3:30b", 0.2, workers=1)
     cl.retry_wait = lambda *a, **k: 0
     return cl
 
@@ -104,7 +132,9 @@ def cloud_classifier():
     from inex.services.classification import ClassificationService
 
     os.environ.setdefault("GOOGLE_API_KEY", "test-key-not-used")
-    cl = ClassificationService(None, PROMPT, "google_genai:gemini-2.5-pro", 0.2, workers=1)
+    cl = ClassificationService(
+        None, load_inex_profile(), "google_genai:gemini-2.5-pro", 0.2, workers=1
+    )
     cl.retry_wait = lambda *a, **k: 0
     return cl
 

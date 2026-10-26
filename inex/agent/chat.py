@@ -6,7 +6,13 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from inex.agent.tools import build_tools
 
 QUIT = "q"
+TAXONOMY_PLACEHOLDER = "{{TAXONOMY}}"
 THREAD_LABEL_CHARS = 8
+
+
+def render_system_prompt(template, profile):
+    taxonomy = "\n".join(f"  - {label.name}: {label.description}" for label in profile.labels)
+    return template.replace(TAXONOMY_PLACEHOLDER, taxonomy)
 
 
 def build_llm(settings):
@@ -26,7 +32,9 @@ def build_agent(app, checkpointer):
     return create_agent(
         model=build_llm(app.settings),
         tools=build_tools(app),
-        system_prompt=app.settings.system_prompt.read_text(encoding="utf-8"),
+        system_prompt=render_system_prompt(
+            app.settings.system_prompt.read_text(encoding="utf-8"), app.profile
+        ),
         checkpointer=checkpointer,
     )
 

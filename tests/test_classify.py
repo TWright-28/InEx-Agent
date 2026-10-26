@@ -229,39 +229,36 @@ class TestPromptConstruction:
 
 class TestIdentity:
     def test_prompt_version_is_content_addressed(self, classifier):
-        assert "@" in classifier.prompt_version
-        assert "+t" in classifier.prompt_version
-        assert classifier.prompt_version != "prompts/classification_prompt.md"
+        assert classifier.prompt_version.startswith("inex@")
+        assert classifier.prompt_version.endswith("+t2")
 
     def test_same_prompt_gives_a_stable_version(self, classifier):
-        from conftest import PROMPT
+        from conftest import load_inex_profile
 
         from inex.services.classification import ClassificationService
 
-        again = ClassificationService(None, PROMPT, "qwen3:30b", 0.2)
+        again = ClassificationService(None, load_inex_profile(), "qwen3:30b", 0.2)
         assert again.prompt_version == classifier.prompt_version
 
 
 class TestStructuredSchema:
-    def test_reasoning_precedes_the_answer(self):
-        """Gemini emits properties in schema order, so reasoning fields must come
-        before probabilities and final_answer."""
-        from inex.services.classification import ClassificationResult
+    def test_reasoning_precedes_the_answer(self, inex_profile):
+        from inex.services.profiles import build_schema
 
-        order = list(ClassificationResult.model_json_schema()["properties"])
+        order = list(build_schema(inex_profile).model_json_schema()["properties"])
         assert order.index("definition_check") < order.index("probabilities")
         assert order.index("probabilities") < order.index("final_answer")
 
-    def test_every_field_is_required(self):
-        from inex.services.classification import ClassificationResult
+    def test_every_field_is_required(self, inex_profile):
+        from inex.services.profiles import build_schema
 
-        js = ClassificationResult.model_json_schema()
+        js = build_schema(inex_profile).model_json_schema()
         assert len(js["required"]) == len(js["properties"])
 
-    def test_final_answer_enumerates_the_taxonomy(self):
-        from inex.services.classification import ClassificationResult
+    def test_final_answer_enumerates_the_taxonomy(self, inex_profile):
+        from inex.services.profiles import build_schema
 
-        js = ClassificationResult.model_json_schema()
+        js = build_schema(inex_profile).model_json_schema()
         assert set(js["properties"]["final_answer"]["enum"]) == {
             "Intrinsic",
             "Extrinsic",
@@ -269,18 +266,24 @@ class TestStructuredSchema:
             "Unknown",
         }
 
-    def test_schema_survives_conversion_for_gemini(self):
-        """$defs is dropped by the converter; the $ref must be inlined first or the
-        nested probabilities object would silently vanish."""
+    @pytest.mark.parametrize(
+        "profile_fixture, slugs, label",
+        [
+            ("inex_profile", {"intrinsic", "extrinsic", "not_a_bug", "unknown"}, "Not a Bug"),
+            ("severity_profile", {"critical", "major", "minor"}, "Major"),
+        ],
+    )
+    def test_schema_survives_conversion_for_gemini(self, request, profile_fixture, slugs, label):
         from langchain_google_genai._function_utils import _dict_to_gapic_schema
 
-        from inex.services.classification import ClassificationResult
+        from inex.services.profiles import build_schema
 
-        gapic = _dict_to_gapic_schema(ClassificationResult.model_json_schema())
+        profile = request.getfixturevalue(profile_fixture)
+        gapic = _dict_to_gapic_schema(build_schema(profile).model_json_schema())
         probs = gapic.properties["probabilities"]
-        assert set(probs.properties) == {"intrinsic", "extrinsic", "not_a_bug", "unknown"}
+        assert set(probs.properties) == slugs
         assert set(probs.required) == set(probs.properties)
-        assert "Not a Bug" in list(gapic.properties["final_answer"].enum)
+        assert label in list(gapic.properties["final_answer"].enum)
 
 
 class TestRouting:
@@ -291,8 +294,11 @@ class TestRouting:
         assert classifier.useStructured is False
 
     def test_colon_in_an_ollama_tag_is_not_a_provider(self):
-        from conftest import PROMPT
+        from conftest import load_inex_profile
 
         from inex.services.classification import ClassificationService
 
-        assert ClassificationService(None, PROMPT, "qwen3:30b", 0.2).useStructured is False
+        assert (
+            ClassificationService(None, load_inex_profile(), "qwen3:30b", 0.2).useStructured
+            is False
+        )

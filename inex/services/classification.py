@@ -1,15 +1,12 @@
 import hashlib
 import json
 import logging
-import re
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Literal
 
 import requests
-from pydantic import BaseModel, Field
 from tenacity import (
     Retrying,
     before_sleep_log,
@@ -19,6 +16,12 @@ from tenacity import (
 )
 
 from inex.errors import InexError
+from inex.services.profiles import (
+    build_schema,
+    count_word,
+    match_label,
+    match_probabilities,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -47,26 +50,6 @@ PROGRESS_EVERY = 25
 # prompt_version because the prompt actually sent is the guide file PLUS this
 # template -- hashing only the file would let the template drift silently.
 TEMPLATE_VERSION = "2"
-
-
-class _Probabilities(BaseModel):
-    intrinsic: float = Field(ge=0.0, le=1.0)
-    extrinsic: float = Field(ge=0.0, le=1.0)
-    not_a_bug: float = Field(ge=0.0, le=1.0)
-    unknown: float = Field(ge=0.0, le=1.0)
-
-
-class ClassificationResult(BaseModel):
-    definition_check: str
-    maintainer_signal: str
-    pr_commit_evidence: str
-    temporal_signals: str
-    contract_rule: str
-    information_completeness: str
-    decision: str
-    confidence: Literal["High", "Medium", "Low"]
-    probabilities: _Probabilities
-    final_answer: Literal["Intrinsic", "Extrinsic", "Not a Bug", "Unknown"]
 
 
 class AttemptFailure(Exception):
@@ -124,7 +107,7 @@ class ClassificationService:
     def __init__(
         self,
         store,
-        guide_path,
+        profile,
         model,
         temperature,
         *,
@@ -134,7 +117,6 @@ class ClassificationService:
     ):
         self.store = store
         self.ollama_base = ollama_base
-        promptPath = guide_path
         retry_attempts = retries
         self.workers = max(1, int(workers or 1))
         self.model_config = {
@@ -142,30 +124,19 @@ class ClassificationService:
             "temperature": temperature,
             "context_window": CONTEXT_WINDOW_TOKENS,
         }
-        self.Labels = ["Intrinsic", "Extrinsic", "Not a Bug", "Unknown"]
+        self.profile = profile
+        self.Labels = [label.name for label in profile.labels]
         self.LABEL_MAP = {label.lower(): label for label in self.Labels}
-        # probability field name on the schema -> canonical label
-        self.PROB_FIELDS = {
-            "intrinsic": "Intrinsic",
-            "extrinsic": "Extrinsic",
-            "not_a_bug": "Not a Bug",
-            "unknown": "Unknown",
-        }
-        self.prompt_path = promptPath
+        self.PROB_FIELDS = {label.slug: label.name for label in profile.labels}
+        self.response_schema = build_schema(profile)
         self._llm = None
         self._structured = None
         self._clientLock = threading.Lock()
-
-        with open(promptPath, encoding="utf-8") as f:
-            self.base_prompt = f.read().strip()
-
-        # Identify the prompt by content, not by path: the path is constant across
-        # every revision, so rows from different prompt generations were previously
-        # indistinguishable and collided on the UNIQUE key.
-        self.prompt_hash = hashlib.sha256(self.base_prompt.encode("utf-8")).hexdigest()[
-            :PROMPT_HASH_CHARS
-        ]
-        self.prompt_version = f"{self.prompt_path}@{self.prompt_hash}+t{TEMPLATE_VERSION}"
+        self.base_prompt = profile.guide_text.strip()
+        self.prompt_hash = hashlib.sha256(
+            profile.raw_bytes + profile.guide_text.encode("utf-8")
+        ).hexdigest()[:PROMPT_HASH_CHARS]
+        self.prompt_version = f"{profile.name}@{self.prompt_hash}+t{TEMPLATE_VERSION}"
 
         self.retry_attempts = retry_attempts
         self.retry_wait = wait_exponential_jitter(
@@ -201,32 +172,10 @@ class ClassificationService:
         return username, role
 
     def extractLabel(self, text):
-        if not text:
-            return None
-
-        match = re.search(
-            r"\*\*Final\s*Answer:\*\*\s*(intrinsic|extrinsic|not\s*a\s*bug|unknown)",
-            text,
-            re.IGNORECASE,
-        )
-
-        if match:
-            raw = match.group(1).lower().strip()
-            return self.LABEL_MAP.get(raw)
-        return None
+        return match_label(self.profile, text)
 
     def extractProbabilities(self, text):
-        if not text:
-            return None
-        matches = re.findall(r"-\s*([a-zA-Z\s]+):\s*([0-9]*\.?[0-9]+)", text)
-
-        probs = {
-            self.LABEL_MAP[name.lower()]: float(val)
-            for name, val in matches
-            if name.lower() in self.LABEL_MAP
-        }
-
-        return probs if probs else None
+        return match_probabilities(self.profile, text) or None
 
     # ---------------- retry policy ----------------
 
@@ -319,7 +268,7 @@ class ClassificationService:
                 # include_raw keeps the raw response for auditing and turns a parse
                 # failure into a value rather than an exception.
                 self._structured = self._llm.with_structured_output(
-                    ClassificationResult, method="json_schema", include_raw=True
+                    self.response_schema, method="json_schema", include_raw=True
                 )
         return self._structured
 
@@ -546,7 +495,7 @@ class ClassificationService:
                 self.formatComment(i, comment, MAX_OTHER_COMMENT_CHARS, alwaysShowRole=False)
             )
 
-        totalShown = len(maintainerComments) + min(50, len(regularComments))
+        totalShown = len(maintainerComments) + min(MAX_OTHER_COMMENTS, len(regularComments))
         if len(commentsList) > totalShown:
             formattedComments.append(
                 f"\n[...{len(commentsList) - totalShown} more comments omitted...]"
@@ -581,37 +530,9 @@ Analyze this issue using the classification guide and reasoning framework provid
 """
 
         if self.useStructured:
-            # The response schema fixes the shape, so asking for markdown headings
-            # here would contradict the bound response_mime_type.
-            task = """Fill every field of the required response schema. Work through the
-reasoning fields in order before committing to the probabilities and the final answer.
-The four probabilities must sum to 1.0.
-
-DO NOT REPEAT RAW FILE PATHS OR FULL STACK TRACE OUTPUTS.
-"""
+            task = self._structured_task()
         else:
-            task = """You must use this structure in your response:
-
-**Reasoning:**
-**Definition Check** - Identify which category definitions match the signals
-**Maintainer Signal** - Note any authoritative maintainer comments about root cause
-**PR/Commit Evidence** - If closing PR exists, describe what it changed and why
-**Temporal Signals** - Check for version changes, upgrades, "works on X fails on Y" patterns
-**Contract Rule** - If API usage involved, determine who violated the contract
-**Information Completeness** - Assess if there's enough detail to classify confidently
-**Decision** - State your classification and the primary evidence supporting it
-**Confidence:** High/Medium/Low
-
-**Probability Distribution:**
-- Intrinsic: 0.XX
-- Extrinsic: 0.XX
-- Not a Bug: 0.XX
-- Unknown: 0.XX
-
-**Final Answer:** [One of: Intrinsic / Extrinsic / Not a Bug / Unknown]
-
-DO NOT REPEAT RAW FILE PATHS OR FULL STACK TRACE OUTPUTS.
-"""
+            task = self._markdown_task()
         return header + task
 
     # ---------------- classification ----------------
@@ -718,6 +639,32 @@ DO NOT REPEAT RAW FILE PATHS OR FULL STACK TRACE OUTPUTS.
                 if done % PROGRESS_EVERY == 0 or done == len(rows):
                     logger.info("  progress %d/%d  %s", done, len(rows), tally)
         return tally
+
+    def _structured_task(self):
+        count = count_word(len(self.profile.labels))
+        return (
+            "Fill every field of the required response schema. Work through the\n"
+            "reasoning fields in order before committing to the probabilities and the final answer.\n"
+            f"The {count} probabilities must sum to 1.0.\n"
+            "\n"
+            "DO NOT REPEAT RAW FILE PATHS OR FULL STACK TRACE OUTPUTS.\n"
+        )
+
+    def _markdown_task(self):
+        lines = ["You must use this structure in your response:", "", "**Reasoning:**"]
+        lines += [f"**{step.title}** - {step.description}" for step in self.profile.reasoning]
+        if self.profile.confidence:
+            lines.append(f"**Confidence:** {'/'.join(self.profile.confidence)}")
+        lines += ["", "**Probability Distribution:**"]
+        lines += [f"- {name}: 0.XX" for name in self.Labels]
+        lines += [
+            "",
+            f"**Final Answer:** [One of: {' / '.join(self.Labels)}]",
+            "",
+            "DO NOT REPEAT RAW FILE PATHS OR FULL STACK TRACE OUTPUTS.",
+            "",
+        ]
+        return "\n".join(lines)
 
     def _runKey(self):
         return (

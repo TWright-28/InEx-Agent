@@ -1,21 +1,21 @@
 from dataclasses import dataclass
 
 from inex.clients.npm import NpmClient
-from inex.config import REPO_ROOT, Settings
+from inex.config import Settings
 from inex.services.classification import ClassificationService
 from inex.services.collection import CollectionService
 from inex.services.imports import ImportService
 from inex.services.linkage import LinkageService
 from inex.services.maintenance import MaintenanceService
+from inex.services.profiles import Profile, load_profile
 from inex.services.queries import QueryService
 from inex.store.database import Store
-
-GUIDE_PATH = REPO_ROOT / "profiles" / "inex_guide.md"
 
 
 @dataclass
 class App:
     settings: Settings
+    profile: Profile
     collection: CollectionService
     classification: ClassificationService
     imports: ImportService
@@ -28,11 +28,12 @@ class App:
 
 
 def build_app(settings: Settings) -> App:
+    profile = load_profile(settings.profile)
     store = Store(settings.database)
     collection = CollectionService(store, settings.github_token)
     classification = ClassificationService(
         store,
-        GUIDE_PATH,
+        profile,
         settings.classifier,
         settings.temperature,
         workers=settings.classify_workers,
@@ -41,6 +42,7 @@ def build_app(settings: Settings) -> App:
     )
     return App(
         settings=settings,
+        profile=profile,
         collection=collection,
         classification=classification,
         imports=ImportService(store, collection, classification),
