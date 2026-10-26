@@ -546,6 +546,40 @@ Each step ends with `pytest` green and is its own commit.
 - **Comment removal** can lose rationale that is not moved into the docs. Step 7 reviews
   every removed comment against the "Things that are not obvious" section.
 
+## Refinements made while planning
+
+These pin details the sections above left open. Where they differ, this section wins.
+
+1. `CollectionService.count` returns `CountResult(owner, repo, issue_count)` and the
+   `MaintenanceService` methods return `DatabaseResult(path)`, so every service call has a
+   dataclass result and both front ends convert results the same way.
+2. `App` also carries `profile: Profile`; the chat front end reads label names and
+   descriptions from it without importing `services`.
+3. `config.py` may import `errors`: a malformed numeric setting raises
+   `InexError("invalid_setting", ...)`.
+4. Settings defaults for bundled files (`profile`, `system_prompt`, `logging_config`)
+   resolve from the repository root, so the CLI works from any working directory. Data
+   paths (`database`, `exports_dir`, `npm_cache_dir`, `checkpoints`) stay relative to the
+   working directory.
+5. `ImportService.load_jsonl(path, model, prompt_version, temperature)`: classification
+   rows need the run key, so the CLI takes `load PATH --model M --prompt-version P
+   [--temperature T]`. `classified_at` comes from the line when present.
+6. Until profiles land, `ClassificationService` takes `guide_path` where it later takes
+   `profile`.
+7. Relative imports are banned (ruff `TID252`) so the layer test resolves every import.
+8. `pytest` runs with `--disable-socket` (pytest-socket is already installed), which
+   enforces that tests never reach an outside service.
+9. The CLI exits `130` on Ctrl+C, after rows already saved stay saved.
+10. Profiles: generated models keep the fixed names `ClassificationResult` and
+    `_Probabilities`, and the schema carries no field descriptions, so the InEx schema is
+    byte-identical to today's once the `ClassificationResult` docstring is removed. That
+    docstring is developer rationale that Pydantic currently sends to Gemini as the
+    schema's `description`; dropping it is the one intended change to what Gemini
+    receives, and its content moves to `docs/architecture.md`. Each reasoning step gains a `title` (for example
+    `PR/Commit Evidence`) used by the non-structured prompt template. The golden tests
+    cover the schema and both rendered prompts, captured as fixtures from today's code
+    before the switch.
+
 ## After 2026-11-10
 
 - Split `services/collection.py`: GitHub REST and GraphQL into `clients/github.py`;
