@@ -1,29 +1,83 @@
 import logging
 import time
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import requests
 
+from inex.errors import InexError
+
 logger = logging.getLogger(__name__)
 
+GRAPHQL_URL = "https://api.github.com/graphql"
+COUNT_QUERY = (
+    "query($owner: String!, $name: String!) "
+    "{ repository(owner: $owner, name: $name) { issues { totalCount } } }"
+)
+PER_PAGE = 100
+REQUEST_TIMEOUT_SECONDS = 30
+HTTP_FORBIDDEN = 403
+HTTP_NOT_FOUND = 404
+RATE_LIMIT_BUFFER_SECONDS = 1
+CLOSE_EVENT_WINDOW_SECONDS = 86400
+REFERENCE_WINDOW_SECONDS = 604800
+MAX_COMMIT_FILES = 20
+PROGRESS_EVERY = 10
 
-class Collect:
-    def __init__(self, token):
-        self.headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
 
-    def countIssues(self, owner, repo):
-        # GraphQL rather than the search API: search answers 422 for some public
-        # repos (facebook/react among them). Returns None if the repo does not exist.
-        query = "query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { issues { totalCount } } }"
+@dataclass(frozen=True)
+class CountResult:
+    owner: str
+    repo: str
+    issue_count: int
+
+
+@dataclass(frozen=True)
+class CollectResult:
+    collected: int
+    skipped: int
+
+
+@dataclass(frozen=True)
+class SpecificResult:
+    project_id: int
+    issue_ids: tuple
+    collected: int
+    skipped: int
+    failed: int
+
+
+class CollectionService:
+    def __init__(self, store, github_token):
+        self.store = store
+        self.github_token = github_token
+        self.headers = {
+            "Authorization": f"Bearer {github_token}",
+            "Accept": "application/vnd.github+json",
+        }
+
+    def _require_token(self):
+        if not self.github_token:
+            raise InexError(
+                "github_token_missing",
+                "No GitHub token is configured. Set GITHUB_TOKEN in .env.",
+            )
+
+    def count(self, owner, repo) -> CountResult:
+        self._require_token()
         r = requests.post(
-            "https://api.github.com/graphql",
+            GRAPHQL_URL,
             headers=self.headers,
-            json={"query": query, "variables": {"owner": owner, "name": repo}},
-            timeout=30,
+            json={"query": COUNT_QUERY, "variables": {"owner": owner, "name": repo}},
+            timeout=REQUEST_TIMEOUT_SECONDS,
         )
         r.raise_for_status()
         repository = (r.json().get("data") or {}).get("repository")
-        return repository["issues"]["totalCount"] if repository else None
+        if not repository:
+            raise InexError(
+                "repo_not_found", f"{owner}/{repo} was not found on GitHub.", owner=owner, repo=repo
+            )
+        return CountResult(owner, repo, repository["issues"]["totalCount"])
 
     def parseTs(self, s):
         if not s:
@@ -34,10 +88,10 @@ class Collect:
         if hdrs is None:
             hdrs = self.headers
         while True:
-            r = requests.get(url, headers=hdrs, timeout=30)
-            if r.status_code == 403 and r.headers.get("X-RateLimit-Remaining") == "0":
+            r = requests.get(url, headers=hdrs, timeout=REQUEST_TIMEOUT_SECONDS)
+            if r.status_code == HTTP_FORBIDDEN and r.headers.get("X-RateLimit-Remaining") == "0":
                 reset = int(r.headers.get("X-RateLimit-Reset", 0))
-                wait = max(0, reset - int(time.time()) + 1)
+                wait = max(0, reset - int(time.time()) + RATE_LIMIT_BUFFER_SECONDS)
                 logger.warning("Github Rate limit reached, sleeping for %d seconds", wait)
                 time.sleep(wait)
                 continue
@@ -53,11 +107,11 @@ class Collect:
         page = 1
         while True:
             sep = "&" if "?" in url else "?"
-            data = self.get(f"{url}{sep}per_page=100&page={page}", hdrs).json()
+            data = self.get(f"{url}{sep}per_page={PER_PAGE}&page={page}", hdrs).json()
             if not data:
                 return items
             items.extend(data)
-            if len(data) < 100:
+            if len(data) < PER_PAGE:
                 return items
             page += 1
 
@@ -65,7 +119,7 @@ class Collect:
         try:
             pr = self.fetch(f"https://api.github.com/repos/{owner}/{repo}/pulls/{prNum}")
         except requests.exceptions.HTTPError as e:
-            if e.response is not None and e.response.status_code == 404:
+            if e.response is not None and e.response.status_code == HTTP_NOT_FOUND:
                 return None
             raise
         try:
@@ -165,7 +219,7 @@ class Collect:
                     "deletions": f.get("deletions"),
                     "changes": f.get("changes"),
                 }
-                for f in c.get("files", [])[:20]
+                for f in c.get("files", [])[:MAX_COMMIT_FILES]
             ],
         }
 
@@ -280,7 +334,14 @@ class Collect:
         if src.get("type") == "issue":
             prNum = src.get("issue", {}).get("number")
             if prNum:
-                prM = self.tryPr(owner, repo, prNum, issueCreatedTime, issueClosedTime, 86400)
+                prM = self.tryPr(
+                    owner,
+                    repo,
+                    prNum,
+                    issueCreatedTime,
+                    issueClosedTime,
+                    CLOSE_EVENT_WINDOW_SECONDS,
+                )
                 if prM:
                     return prM, None
 
@@ -290,7 +351,14 @@ class Collect:
             if refSrc.get("type") == "issue":
                 prNum = refSrc.get("issue", {}).get("number")
                 if prNum:
-                    prM = self.tryPr(owner, repo, prNum, issueCreatedTime, issueClosedTime, 604800)
+                    prM = self.tryPr(
+                        owner,
+                        repo,
+                        prNum,
+                        issueCreatedTime,
+                        issueClosedTime,
+                        REFERENCE_WINDOW_SECONDS,
+                    )
                     if prM:
                         return prM, None
 
@@ -300,7 +368,14 @@ class Collect:
             if refSrc.get("type") == "issue":
                 prNum = refSrc.get("issue", {}).get("number")
                 if prNum:
-                    prM = self.tryPr(owner, repo, prNum, issueCreatedTime, issueClosedTime, 604800)
+                    prM = self.tryPr(
+                        owner,
+                        repo,
+                        prNum,
+                        issueCreatedTime,
+                        issueClosedTime,
+                        REFERENCE_WINDOW_SECONDS,
+                    )
                     if prM:
                         return prM, None
 
@@ -317,7 +392,7 @@ class Collect:
                             prs[0].get("number"),
                             issueCreatedTime,
                             issueClosedTime,
-                            604800,
+                            REFERENCE_WINDOW_SECONDS,
                         )
                         if prM:
                             return prM, None
@@ -339,7 +414,12 @@ class Collect:
                 )
                 if prs:
                     prM = self.tryPr(
-                        owner, repo, prs[0].get("number"), issueCreatedTime, issueClosedTime, 604800
+                        owner,
+                        repo,
+                        prs[0].get("number"),
+                        issueCreatedTime,
+                        issueClosedTime,
+                        REFERENCE_WINDOW_SECONDS,
                     )
                     if prM:
                         return prM, None
@@ -486,7 +566,9 @@ class Collect:
             "closing_commit": closingCommit,
         }
 
-    def collectSpecific(self, owner, repo, numbers, db):
+    def collect_specific(self, owner, repo, numbers) -> SpecificResult:
+        self._require_token()
+        db = self.store
         logger.info("Collecting %d specific issues for %s/%s", len(numbers), owner, repo)
         projectId = db.save_project(owner, repo)
         collected, skipped, failed = 0, 0, 0
@@ -514,7 +596,7 @@ class Collect:
             issueIds.append(issueId)
             collected += 1
 
-            if collected % 10 == 0:
+            if collected % PROGRESS_EVERY == 0:
                 logger.info("  Collected %d/%d for %s/%s", collected, len(numbers), owner, repo)
 
         logger.info(
@@ -525,11 +607,14 @@ class Collect:
             skipped,
             failed,
         )
-        return projectId, issueIds, collected, skipped, failed
+        return SpecificResult(projectId, tuple(issueIds), collected, skipped, failed)
 
-    def collectAll(
-        self, owner, repo, db, max_issues=None, start_date=None, end_date=None, direction="desc"
-    ):
+    def collect(
+        self, owner, repo, *, count=None, start=None, end=None, order="desc"
+    ) -> CollectResult:
+        self._require_token()
+        db = self.store
+        max_issues, start_date, end_date, direction = count, start, end, order
         logger.info("Starting collection for %s/%s", owner, repo)
         projectId = db.save_project(owner, repo)
         collected = 0
@@ -541,7 +626,7 @@ class Collect:
 
         while True:
             issuesUrl = f"https://api.github.com/repos/{owner}/{repo}/issues?state=all&sort=created&direction={direction}"
-            issues = self.get(f"{issuesUrl}&per_page=100&page={pg}").json()
+            issues = self.get(f"{issuesUrl}&per_page={PER_PAGE}&page={pg}").json()
 
             for issue in issues:
                 if issue.get("pull_request"):
@@ -574,14 +659,14 @@ class Collect:
                 db.save_issue(projectId, issueData)
                 collected += 1
 
-                if collected % 10 == 0:
+                if collected % PROGRESS_EVERY == 0:
                     logger.info("  Collected %d issues (skipped %d)", collected, skipped)
 
                 if max_issues and collected >= max_issues:
                     logger.info("Reached max_issues cap.")
                     return self._finish(owner, repo, collected, skipped)
 
-            if len(issues) < 100:
+            if len(issues) < PER_PAGE:
                 break
             pg += 1
 
@@ -595,6 +680,4 @@ class Collect:
             collected,
             skipped,
         )
-        return (
-            f"Collected {collected} issues from {owner}/{repo} (skipped {skipped} already in DB)."
-        )
+        return CollectResult(collected=collected, skipped=skipped)

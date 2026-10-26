@@ -9,7 +9,8 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 import requests
 
-from tools.helpers.collect import Collect
+from inex.errors import InexError
+from inex.services.collection import CollectionService, CollectResult, CountResult
 
 # number -> created_at, deliberately listed out of order
 CREATED = {
@@ -66,8 +67,8 @@ def fake_collect_issue(owner, repo, num):
 
 
 @pytest.fixture
-def collector(monkeypatch):
-    c = Collect("test-token")
+def collector(monkeypatch, db):
+    c = CollectionService(db, "test-token")
     monkeypatch.setattr(c, "get", fake_issue_list)
     monkeypatch.setattr(c, "collectIssue", fake_collect_issue)
     return c
@@ -79,18 +80,27 @@ def saved_in_order(db):
 
 class TestCollectDirection:
     def test_ascending_collects_oldest_first_up_to_end_date(self, collector, db):
-        collector.collectAll("acme", "widget", db, end_date="2020-03-31T23:59:59Z", direction="asc")
+        collector.collect("acme", "widget", end="2020-03-31T23:59:59Z", order="asc")
         assert saved_in_order(db) == [1, 2, 3]
 
     def test_ascending_count_takes_the_oldest_issues(self, collector, db):
-        collector.collectAll("acme", "widget", db, max_issues=2, direction="asc")
+        collector.collect("acme", "widget", count=2, order="asc")
         assert saved_in_order(db) == [1, 2]
 
     def test_descending_stops_at_start_date(self, collector, db):
-        collector.collectAll(
-            "acme", "widget", db, start_date="2020-03-01T00:00:00Z", direction="desc"
-        )
+        collector.collect("acme", "widget", start="2020-03-01T00:00:00Z", order="desc")
         assert saved_in_order(db) == [5, 4, 3]
+
+
+class TestCollectResult:
+    def test_collect_reports_counts_and_skips_on_rerun(self, collector, db):
+        assert collector.collect("acme", "widget") == CollectResult(collected=5, skipped=0)
+        assert collector.collect("acme", "widget") == CollectResult(collected=0, skipped=5)
+
+    def test_collect_without_a_token_raises(self, db):
+        with pytest.raises(InexError) as e:
+            CollectionService(db, None).collect("acme", "widget")
+        assert e.value.code == "github_token_missing"
 
 
 class TestCountIssues:
@@ -106,7 +116,7 @@ class TestCountIssues:
                 sent.append({"url": url, "json": json})
                 return FakeResponse(payload)
 
-            monkeypatch.setattr("tools.helpers.collect.requests.post", post)
+            monkeypatch.setattr("inex.services.collection.requests.post", post)
             return sent
 
         return install
@@ -116,15 +126,17 @@ class TestCountIssues:
         def refuse(self, url, hdrs=None):
             FakeResponse({"message": "Validation Failed"}, status=422).raise_for_status()
 
-        monkeypatch.setattr(Collect, "get", refuse)
+        monkeypatch.setattr(CollectionService, "get", refuse)
 
-    def test_count_works_where_search_is_refused(self, graphql, search_refuses):
+    def test_count_works_where_search_is_refused(self, graphql, search_refuses, db):
         sent = graphql({"data": {"repository": {"issues": {"totalCount": 14779}}}})
-        assert Collect("test-token").countIssues("facebook", "react") == 14779
+        assert CollectionService(db, "t").count("facebook", "react") == CountResult(
+            "facebook", "react", 14779
+        )
         assert sent[0]["url"] == "https://api.github.com/graphql"
         assert sent[0]["json"]["variables"] == {"owner": "facebook", "name": "react"}
 
-    def test_missing_repository_counts_as_none(self, graphql, search_refuses):
+    def test_missing_repository_raises(self, graphql, search_refuses, db):
         graphql(
             {
                 "data": {"repository": None},
@@ -137,23 +149,13 @@ class TestCountIssues:
                 ],
             }
         )
-        assert Collect("test-token").countIssues("nope", "nope") is None
+        with pytest.raises(InexError) as e:
+            CollectionService(db, "t").count("nope", "nope")
+        assert e.value.code == "repo_not_found"
 
-
-class TestCountIssuesTool:
-    @pytest.fixture
-    def tool(self):
-        import os
-
-        os.environ.setdefault("GOOGLE_API_KEY", "test-key-not-used")
-        from tools.langchain_tools import count_issues
-
-        return count_issues
-
-    def test_reports_the_exact_count_above_1000(self, tool, monkeypatch):
-        monkeypatch.setattr(Collect, "countIssues", lambda self, o, r: 14779)
-        assert tool.invoke({"repoName": "facebook/react"}) == "facebook/react has 14779 issues."
-
-    def test_reports_a_missing_repository(self, tool, monkeypatch):
-        monkeypatch.setattr(Collect, "countIssues", lambda self, o, r: None)
-        assert tool.invoke({"repoName": "nope/nope"}) == "nope/nope was not found on GitHub."
+    def test_missing_token_raises_before_any_request(self, graphql, db):
+        sent = graphql({})
+        with pytest.raises(InexError) as e:
+            CollectionService(db, None).count("facebook", "react")
+        assert e.value.code == "github_token_missing"
+        assert sent == []

@@ -15,10 +15,10 @@ from config import (
 )
 from inex.clients.npm import NpmClient
 from inex.errors import InexError
+from inex.services.collection import CollectionService
 from inex.services.linkage import LinkageService
 from inex.store.database import Store
 from tools.helpers.classify import Classify
-from tools.helpers.collect import Collect
 from tools.helpers.issueList import parseIssueListCsv
 from tools.helpers.sqlQuery import MAX_SQL_ROWS, describeSchema, exportQuery, runSql
 
@@ -35,11 +35,11 @@ linkage = LinkageService(db, NpmClient(Path(".npm_doc_cache")))
 )
 def count_issues(repoName: str) -> str:
     owner, repo = repoName.split("/")
-    collector = Collect(GITHUB_TOKEN)
-    count = collector.countIssues(owner, repo)
-    if count is None:
-        return f"{owner}/{repo} was not found on GitHub."
-    return f"{owner}/{repo} has {count} issues."
+    try:
+        result = CollectionService(db, GITHUB_TOKEN).count(owner, repo)
+    except InexError as e:
+        return {"status": "error", "code": e.code, "message": e.message}
+    return {"status": "ok", **asdict(result)}
 
 
 @tool(
@@ -60,16 +60,13 @@ def collect_all(
     owner, repo = parts
     if end_date and len(end_date) == 10:
         end_date = end_date + "T23:59:59Z"
-    collector = Collect(GITHUB_TOKEN)
-    return collector.collectAll(
-        owner,
-        repo,
-        db,
-        max_issues=count,
-        start_date=start_date,
-        end_date=end_date,
-        direction=direction,
-    )
+    try:
+        result = CollectionService(db, GITHUB_TOKEN).collect(
+            owner, repo, count=count, start=start_date, end=end_date, order=direction
+        )
+    except InexError as e:
+        return {"status": "error", "code": e.code, "message": e.message}
+    return {"status": "ok", **asdict(result)}
 
 
 @tool(
@@ -227,14 +224,14 @@ def import_issue_list(csv_path: str, column: str = None, classify: bool = True) 
     for owner, repo, num in entries:
         by_repo[(owner, repo)].append(num)
 
-    collector = Collect(GITHUB_TOKEN)
+    collector = CollectionService(db, GITHUB_TOKEN)
     results = []
     totals = {"collected": 0, "skipped": 0, "failed": 0, "classified": 0}
 
     for (owner, repo), nums in sorted(by_repo.items()):
-        project_id, issue_ids, collected, skipped, failed = collector.collectSpecific(
-            owner, repo, nums, db
-        )
+        specific = collector.collect_specific(owner, repo, nums)
+        project_id, issue_ids = specific.project_id, list(specific.issue_ids)
+        collected, skipped, failed = specific.collected, specific.skipped, specific.failed
         classified = 0
         if classify and issue_ids:
             cl.classifyByIds(owner, repo, issue_ids, db)
