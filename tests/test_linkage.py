@@ -8,18 +8,20 @@ behaviour.
 
 import pytest
 
-from tools.core.dependencies import DependencySnapshotter, _isPrerelease, _parseTs
-from tools.core.npm_registry import sortVersionsDesc
+from inex.services.linkage import (
+    is_prerelease,
+    live_version_at,
+    parse_timestamp,
+    sort_versions_desc,
+)
 
 
 @pytest.fixture
 def pick():
-    snap = DependencySnapshotter.__new__(DependencySnapshotter)
-
     def _pick(times, issue_date):
         # built exactly as snapshot_for_classified builds it
-        ordered = sortVersionsDesc(list(times))
-        got = snap._live_version_at(issue_date, [(v, times.get(v)) for v in ordered])
+        ordered = sort_versions_desc(list(times))
+        got = live_version_at(issue_date, [(v, times.get(v)) for v in ordered])
         return got[0] if got else None
 
     return _pick
@@ -62,8 +64,8 @@ class TestPrereleases:
         assert pick(times, "2020-07-01T00:00:00Z") == "1.0.0-beta.1"
 
     def test_prerelease_detection(self):
-        assert _isPrerelease("2.1.0-next.999")
-        assert not _isPrerelease("2.1.0")
+        assert is_prerelease("2.1.0-next.999")
+        assert not is_prerelease("2.1.0")
 
 
 class TestTimestamps:
@@ -78,15 +80,17 @@ class TestTimestamps:
         assert pick(times, "2020-01-01T09:00:00Z") == "1.0.0"
 
     def test_formats_parse_to_the_same_instant(self):
-        assert _parseTs("2020-01-01T00:00:00.000Z") == _parseTs("2020-01-01T00:00:00Z")
+        assert parse_timestamp("2020-01-01T00:00:00.000Z") == parse_timestamp(
+            "2020-01-01T00:00:00Z"
+        )
 
     def test_bare_date_is_comparable_with_an_aware_timestamp(self):
-        assert _parseTs("2020-01-01") < _parseTs("2020-06-01T00:00:00.000Z")
+        assert parse_timestamp("2020-01-01") < parse_timestamp("2020-06-01T00:00:00.000Z")
 
     def test_unparseable_values_return_none(self):
-        assert _parseTs("not-a-date") is None
-        assert _parseTs(None) is None
-        assert _parseTs("") is None
+        assert parse_timestamp("not-a-date") is None
+        assert parse_timestamp(None) is None
+        assert parse_timestamp("") is None
 
     def test_missing_publish_time_is_skipped_not_fatal(self, pick):
         times = {"1.0.0": None, "0.9.0": "2019-01-01T00:00:00.000Z"}

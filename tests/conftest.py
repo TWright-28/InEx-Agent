@@ -74,6 +74,21 @@ def seeded(db):
 
 
 @pytest.fixture
+def seeded_classified(seeded):
+    db, pid, ids = seeded
+    for issue_id in ids:
+        db.save_classification(
+            issue_id,
+            {"classification": "Intrinsic", "classification_probabilities": FULL_PROBS},
+            "qwen3:30b",
+            "inex@test+t2",
+            0.2,
+            "2026-10-26T00:00:00",
+        )
+    return db, pid, ids
+
+
+@pytest.fixture
 def classifier():
     """Ollama-path classifier: never reaches the network in these tests."""
     from tools.helpers.classify import Classify

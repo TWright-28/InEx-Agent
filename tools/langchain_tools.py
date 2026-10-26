@@ -1,4 +1,6 @@
 from collections import defaultdict
+from dataclasses import asdict
+from pathlib import Path
 
 from langchain.tools import tool
 
@@ -11,8 +13,10 @@ from config import (
     classifyWorkers,
     temperature,
 )
+from inex.clients.npm import NpmClient
+from inex.errors import InexError
+from inex.services.linkage import LinkageService
 from inex.store.database import Store
-from tools.core.dependencies import DependencySnapshotter
 from tools.helpers.classify import Classify
 from tools.helpers.collect import Collect
 from tools.helpers.issueList import parseIssueListCsv
@@ -22,7 +26,7 @@ db = Store(DB_PATH)
 cl = Classify(
     classifier, temperature, classifyPrompt, workers=classifyWorkers, retry_attempts=classifyRetries
 )
-snap = DependencySnapshotter()
+linkage = LinkageService(db, NpmClient(Path(".npm_doc_cache")))
 
 
 @tool(
@@ -110,18 +114,21 @@ def snapshot_dependencies(
     if len(parts) != 2:
         return {"status": "error", "code": "invalid_repo_format", "received": repo_name}
     owner, repo = parts
-    return snap.snapshot_for_classified(
-        owner,
-        repo,
-        db,
-        npm_package=npm_package,
-        start=start_date,
-        end=end_date,
-        version_range=version_range,
-        last_n_versions=last_n_versions,
-        version_start=version_start,
-        version_end=version_end,
-    )
+    try:
+        result = linkage.link(
+            owner,
+            repo,
+            npm_package,
+            start=start_date,
+            end=end_date,
+            version_range=version_range,
+            last_n_versions=last_n_versions,
+            version_start=version_start,
+            version_end=version_end,
+        )
+    except InexError as e:
+        return {"status": "error", "code": e.code, "message": e.message}
+    return {"status": "ok", **asdict(result)}
 
 
 @tool(
