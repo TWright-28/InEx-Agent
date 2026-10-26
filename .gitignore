@@ -213,3 +213,4 @@ db/
 logs/.env
 .env.*
 !.env.example
+.npm_doc_cache/
