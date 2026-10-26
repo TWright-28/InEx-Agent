@@ -10,7 +10,7 @@ from inex.services.maintenance import MaintenanceService
 from inex.services.queries import QueryService
 from inex.store.database import Store
 
-GUIDE_PATH = REPO_ROOT / "prompts" / "classification_prompt.md"
+GUIDE_PATH = REPO_ROOT / "profiles" / "inex_guide.md"
 
 
 @dataclass
