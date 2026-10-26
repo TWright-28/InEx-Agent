@@ -89,6 +89,20 @@ def seeded_classified(seeded):
 
 
 @pytest.fixture
+def settings(tmp_path):
+    from inex.config import load_settings
+
+    return load_settings(
+        env_file=None,
+        database=tmp_path / "t.db",
+        exports_dir=tmp_path / "exports",
+        npm_cache_dir=tmp_path / "npm",
+        checkpoints=tmp_path / "c.db",
+        github_token="t",
+    )
+
+
+@pytest.fixture
 def classifier():
     """Ollama-path classifier: never reaches the network in these tests."""
     from inex.services.classification import ClassificationService
