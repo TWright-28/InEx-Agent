@@ -57,9 +57,6 @@ class _Probabilities(BaseModel):
 
 
 class ClassificationResult(BaseModel):
-    """Field order is load-bearing: Gemini emits properties in schema order, so
-    the reasoning fields must precede the probabilities and the final answer."""
-
     definition_check: str
     maintainer_signal: str
     pr_commit_evidence: str
