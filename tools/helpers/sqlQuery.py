@@ -59,6 +59,8 @@ def exportQuery(query: str, fmt: str = "csv", filename: str = None) -> dict:
         return {"status": "error", "code": "multiple_statements", "message": "Only one statement allowed."}
     if fmt not in ("csv", "json"):
         return {"status": "error", "code": "invalid_format", "message": "format must be 'csv' or 'json'."}
+    if filename and (os.path.basename(filename) != filename or "/" in filename or "\\" in filename):
+        return {"status": "error", "code": "invalid_filename", "message": "filename must be a plain file name; exports are always written to exports/."}
 
     try:
         cur = ro_conn.cursor()

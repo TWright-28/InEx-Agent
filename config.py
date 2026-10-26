@@ -36,5 +36,16 @@ classifier = "google_genai:gemini-2.5-pro"
 temperature = 0.2
 num_ctx = 131072  # only applied when orchestrator uses Ollama
 
+# How many issues to classify in parallel. The bottleneck is per-request model
+# latency (gemini-2.5-pro spends ~1 min/issue on thinking), not rate limits, so
+# parallelism is the lever that matters. Raise if you have quota headroom; drop
+# to 1 for a local Ollama classifier, which serialises on the GPU anyway.
+classifyWorkers = 8
+
+# Attempts per issue before it is recorded as a failure. Gemini returns transient
+# 503 UNAVAILABLE under load - 5 of 30 issues hit one in a single ground-truth run -
+# and those are retried with exponential backoff rather than lost.
+classifyRetries = 5
+
 
 

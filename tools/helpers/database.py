@@ -1,4 +1,5 @@
 import sqlite3
+import threading
 from config import DB_PATH
 from datetime import datetime
 import json
@@ -8,6 +9,12 @@ class InExTool:
     def __init__(self, db_path):
         self.connection = sqlite3.connect(db_path, check_same_thread=False)
         self.cursor = self.connection.cursor()
+        # Serialises writes from the classifier's worker threads. Deliberately a
+        # lock rather than WAL: sqlQuery.py opens this database `mode=ro`, and a
+        # read-only connection cannot create the -shm file a WAL database needs.
+        # A write takes microseconds against a minute-long model call, so the
+        # lock costs nothing in practice.
+        self._writeLock = threading.Lock()
         self._create_tables()
 
     def _create_tables(self):
@@ -173,30 +180,31 @@ class InExTool:
             raise ValueError(
                 f"refusing to store classification {classification!r} with status {status!r}")
 
-        # Upsert rather than INSERT OR REPLACE: the latter deletes and reinserts,
-        # so classifications.id changes on every re-save.
-        cur.execute("""INSERT INTO classifications(
-                issue_id, classification, classification_probabilities,
-                classification_raw_response, model, prompt_version, temperature,
-                classified_at, status, error, validation_flags, argmax_label, attempts)
-            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
-            ON CONFLICT(issue_id, model, prompt_version, temperature) DO UPDATE SET
-                classification=excluded.classification,
-                classification_probabilities=excluded.classification_probabilities,
-                classification_raw_response=excluded.classification_raw_response,
-                classified_at=excluded.classified_at,
-                status=excluded.status,
-                error=excluded.error,
-                validation_flags=excluded.validation_flags,
-                argmax_label=excluded.argmax_label,
-                attempts=excluded.attempts""",
-            (issue_id, classification, probabilites, classification_raw, model, prompt,
-             temp, classifiedat, status, error, flags, argmax_label, attempts))
-        self.connection.commit()
-        cur.execute(
-            "SELECT id FROM classifications WHERE issue_id=? AND model=? AND prompt_version=? AND temperature=?",
-            (issue_id, model, prompt, temp))
-        return cur.fetchone()[0]
+        with self._writeLock:
+            # Upsert rather than INSERT OR REPLACE: the latter deletes and reinserts,
+            # so classifications.id changes on every re-save.
+            cur.execute("""INSERT INTO classifications(
+                    issue_id, classification, classification_probabilities,
+                    classification_raw_response, model, prompt_version, temperature,
+                    classified_at, status, error, validation_flags, argmax_label, attempts)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(issue_id, model, prompt_version, temperature) DO UPDATE SET
+                    classification=excluded.classification,
+                    classification_probabilities=excluded.classification_probabilities,
+                    classification_raw_response=excluded.classification_raw_response,
+                    classified_at=excluded.classified_at,
+                    status=excluded.status,
+                    error=excluded.error,
+                    validation_flags=excluded.validation_flags,
+                    argmax_label=excluded.argmax_label,
+                    attempts=excluded.attempts""",
+                (issue_id, classification, probabilites, classification_raw, model, prompt,
+                 temp, classifiedat, status, error, flags, argmax_label, attempts))
+            self.connection.commit()
+            cur.execute(
+                "SELECT id FROM classifications WHERE issue_id=? AND model=? AND prompt_version=? AND temperature=?",
+                (issue_id, model, prompt, temp))
+            return cur.fetchone()[0]
 
     def setPackageName(self, project_id, package_name):
         cur = self.connection.cursor()
