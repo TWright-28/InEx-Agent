@@ -4,8 +4,8 @@ DATABASE_URL must be set before anything imports config, because config reads it
 at import time and tools.helpers.sqlQuery opens a read-only connection on import.
 """
 import os
-import sys
 import sqlite3
+import sys
 import tempfile
 from pathlib import Path
 

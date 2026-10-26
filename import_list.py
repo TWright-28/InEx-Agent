@@ -5,9 +5,9 @@ Usage:
     python import_list.py issues.csv --no-classify
     python import_list.py issues.csv --db db/icsme_issues.db --column resolved_issues
 """
+import json
 import os
 import sys
-import json
 import time
 
 # Route everything into a separate DB so the real one is never touched.
@@ -33,6 +33,7 @@ csv_path = args[0] if args else "issues.csv"
 
 # Create the schema/file before read-only consumers (sqlQuery) import.
 from tools.helpers.database import InExTool
+
 InExTool(db_path)
 
 from tools.langchain_tools import import_issue_list

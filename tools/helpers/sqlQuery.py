@@ -3,6 +3,7 @@ import json
 import os
 import sqlite3
 from datetime import datetime
+
 from config import DB_PATH
 
 #optional, can modify. setting to 50 since we in CLI
@@ -84,7 +85,7 @@ def exportQuery(query: str, fmt: str = "csv", filename: str = None) -> dict:
             writer.writerows(rows)
     else:
         with open(path, "w", encoding="utf-8") as f:
-            json.dump([dict(zip(cols, r)) for r in rows], f, indent=2)
+            json.dump([dict(zip(cols, r, strict=False)) for r in rows], f, indent=2)
 
     return {
         "status": "ok",

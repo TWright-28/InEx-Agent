@@ -1,11 +1,13 @@
 from __future__ import annotations
+
 import logging
 import re
-from datetime import datetime, timezone
-from functools import lru_cache
+from datetime import UTC, datetime
+from functools import cache
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+
 import requests
+
 from tools.core.npm_registry import fetchFull, sortVersionsDesc
 
 logger = logging.getLogger(__name__)
@@ -13,7 +15,7 @@ logger = logging.getLogger(__name__)
 DOC_CACHE_DIR = Path(".npm_doc_cache")
 
 
-@lru_cache(maxsize=None)
+@cache
 def _parseTs(value):
     """Parse an npm or GitHub timestamp to an aware UTC datetime.
 
@@ -35,7 +37,7 @@ def _parseTs(value):
         dt = datetime.fromisoformat(text)
     except ValueError:
         return None
-    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
 
 
 def _isPrerelease(version):

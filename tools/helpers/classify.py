@@ -1,16 +1,22 @@
 import hashlib
-import json, re
+import json
 import logging
+import re
 import threading
-import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Literal
 
+import requests
 from pydantic import BaseModel, Field
-from tenacity import (Retrying, before_sleep_log, retry_if_exception,
-                      stop_after_attempt, wait_exponential_jitter)
+from tenacity import (
+    Retrying,
+    before_sleep_log,
+    retry_if_exception,
+    stop_after_attempt,
+    wait_exponential_jitter,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -58,13 +64,13 @@ class AttemptFailure(Exception):
 
 @dataclass
 class ParsedResult:
-    label: Optional[str] = None
+    label: str | None = None
     probs: dict = field(default_factory=dict)
     raw_text: str = ""
     status: str = "ok"
-    error: Optional[str] = None
+    error: str | None = None
     flags: list = field(default_factory=list)
-    argmax_label: Optional[str] = None
+    argmax_label: str | None = None
     attempts: int = 1
 
     @property
@@ -83,7 +89,7 @@ class Classify:
                 "context_window": 30000,
             }
         self.Labels = ["Intrinsic", "Extrinsic", "Not a Bug", "Unknown"]
-        self.LABEL_MAP = {l.lower(): l for l in self.Labels}
+        self.LABEL_MAP = {label.lower(): label for label in self.Labels}
         # probability field name on the schema -> canonical label
         self.PROB_FIELDS = {"intrinsic": "Intrinsic", "extrinsic": "Extrinsic",
                             "not_a_bug": "Not a Bug", "unknown": "Unknown"}
@@ -92,7 +98,7 @@ class Classify:
         self._structured = None
         self._clientLock = threading.Lock()
 
-        with open(promptPath, 'r', encoding='utf-8') as f:
+        with open(promptPath, encoding='utf-8') as f:
             self.base_prompt = f.read().strip()
 
         # Identify the prompt by content, not by path: the path is constant across
@@ -131,7 +137,8 @@ class Classify:
         return username, role
 
     def extractLabel(self, text):
-        if not text: return None
+        if not text:
+            return None
 
         match = re.search(r"\*\*Final\s*Answer:\*\*\s*(intrinsic|extrinsic|not\s*a\s*bug|unknown)", text, re.IGNORECASE)
 
@@ -141,7 +148,8 @@ class Classify:
         return None
 
     def extractProbabilities(self, text):
-        if not text: return None
+        if not text:
+            return None
         matches = re.findall(r"-\s*([a-zA-Z\s]+):\s*([0-9]*\.?[0-9]+)", text)
 
         probs = {self.LABEL_MAP[name.lower()]: float(val)
@@ -163,7 +171,7 @@ class Classify:
         if isinstance(exc, AttemptFailure):
             return exc.retryable
 
-        if isinstance(exc, (requests.exceptions.Timeout, requests.exceptions.ConnectionError)):
+        if isinstance(exc, requests.exceptions.Timeout | requests.exceptions.ConnectionError):
             return True
         if isinstance(exc, requests.exceptions.HTTPError):
             resp = getattr(exc, "response", None)
@@ -318,7 +326,7 @@ class Classify:
             return result
 
         bad = {k: v for k, v in probs.items()
-               if not isinstance(v, (int, float)) or not 0.0 <= float(v) <= 1.0}
+               if not isinstance(v, int | float) or not 0.0 <= float(v) <= 1.0}
         if bad:
             result.status, result.error = "invalid_result", f"probabilities out of range: {bad}"
             result.label = None
@@ -361,7 +369,7 @@ class Classify:
 
         labels = issue.get('labels', [])
         if labels:
-            labelNames = [l.get('name', '') for l in labels if l.get('name')]
+            labelNames = [label.get('name', '') for label in labels if label.get('name')]
             labelsStr = ', '.join(labelNames) if labelNames else 'None'
         else:
             labelsStr = 'None'

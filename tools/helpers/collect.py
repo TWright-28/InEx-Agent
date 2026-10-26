@@ -1,9 +1,9 @@
-import json
-import time
-import requests
-from datetime import datetime, timezone
-from config import GITHUB_TOKEN
 import logging
+import time
+from datetime import UTC, datetime
+
+import requests
+
 logger = logging.getLogger(__name__)
 
 class Collect: 
@@ -70,7 +70,7 @@ class Collect:
             raise
         try:
             revs = self.fetchPaginated(f"https://api.github.com/repos/{owner}/{repo}/pulls/{prNum}/reviews")
-        except:
+        except Exception:
             revs = []
 
         reviewers = set()
@@ -172,15 +172,15 @@ class Collect:
             fcTime = self.parseTs(firstComment.get("created_at"))
             if fcTime:
                 if createdAt.tzinfo and not fcTime.tzinfo:
-                    fcTime = fcTime.replace(tzinfo=timezone.utc)
+                    fcTime = fcTime.replace(tzinfo=UTC)
                 elif not createdAt.tzinfo and fcTime.tzinfo:
-                    createdAt = createdAt.replace(tzinfo=timezone.utc)
+                    createdAt = createdAt.replace(tzinfo=UTC)
                 m["time_to_first_response_seconds"] = int((fcTime - createdAt).total_seconds())
 
         if createdAt:
-            endTime = closedAt if closedAt else datetime.now(timezone.utc)
+            endTime = closedAt if closedAt else datetime.now(UTC)
             if not createdAt.tzinfo:
-                createdAt = createdAt.replace(tzinfo=timezone.utc)
+                createdAt = createdAt.replace(tzinfo=UTC)
             m["time_open_seconds"] = int((endTime - createdAt).total_seconds())
 
         return m
@@ -300,7 +300,7 @@ class Collect:
                         prM = self.tryPr(owner, repo, prs[0].get("number"), issueCreatedTime, issueClosedTime, 604800)
                         if prM:
                             return prM, None
-                except:
+                except Exception:
                     continue
 
         commitSha = closedEvt.get("commit_id")
@@ -324,7 +324,7 @@ class Collect:
                     except requests.exceptions.HTTPError:
                         pass
 
-            except:
+            except Exception:
                 pass
 
         return None, None
@@ -394,7 +394,7 @@ class Collect:
         commentsMd = self.buildComments(commentsData)
         commentsText = self.buildComments(commentsData, format_ts=True)
 
-        labels = [{"name": l.get("name"), "description": l.get("description"), "color": l.get("color")} for l in issue.get("labels", [])]
+        labels = [{"name": label.get("name"), "description": label.get("description"), "color": label.get("color")} for label in issue.get("labels", [])]
         assignees = [{"username": u.get("login"), "id": u.get("id")} for u in issue.get("assignees", [])]
 
         ms = issue.get("milestone")

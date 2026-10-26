@@ -1,14 +1,23 @@
-from tools.helpers.database import InExTool
-from tools.helpers.collect import Collect
-from tools.helpers.classify import Classify
-from tools.helpers.sqlQuery import runSql, describeSchema, exportQuery, MAX_SQL_ROWS
-from tools.helpers.issueList import parseIssueListCsv
-from config import DB_PATH, GITHUB_TOKEN, temperature, classifier, classifyPrompt, classifyWorkers, classifyRetries
-from langchain.tools import tool
-from tools.core.dependencies import DependencySnapshotter
-from collections import defaultdict
 import sqlite3
+from collections import defaultdict
 
+from langchain.tools import tool
+
+from config import (
+    DB_PATH,
+    GITHUB_TOKEN,
+    classifier,
+    classifyPrompt,
+    classifyRetries,
+    classifyWorkers,
+    temperature,
+)
+from tools.core.dependencies import DependencySnapshotter
+from tools.helpers.classify import Classify
+from tools.helpers.collect import Collect
+from tools.helpers.database import InExTool
+from tools.helpers.issueList import parseIssueListCsv
+from tools.helpers.sqlQuery import MAX_SQL_ROWS, describeSchema, exportQuery, runSql
 
 db = InExTool(DB_PATH)
 cl = Classify(classifier, temperature, classifyPrompt, workers=classifyWorkers,
@@ -146,7 +155,7 @@ def import_issue_list(csv_path: str, column: str = None, classify: bool = True) 
             db.cursor.execute(
                 "SELECT COUNT(*) FROM classifications c JOIN issues i ON i.id=c.issue_id "
                 "WHERE i.project_id=? AND c.model=? AND c.prompt_version=? AND c.temperature=? "
-                "AND c.status='ok' AND i.issue_number IN (%s)" % ",".join("?" * len(nums)),
+                "AND c.status='ok' AND i.issue_number IN ({})".format(",".join("?" * len(nums))),
                 [project_id, classifier, cl.prompt_version, temperature, *nums])
             classified = db.cursor.fetchone()[0]
 

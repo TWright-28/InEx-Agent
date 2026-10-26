@@ -1,9 +1,10 @@
 from __future__ import annotations
+
 import json
 import re
 import sys
 from pathlib import Path
-from typing import List, Optional
+
 import requests
 
 REGISTRY_BASE = "https://registry.npmjs.org"
@@ -11,7 +12,7 @@ HTTP_TIMEOUT = 30
 SEMVER_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)")
 
 
-def fetchFull(name: str, cache_dir: Path, session: Optional[requests.Session] = None) -> Optional[dict]:
+def fetchFull(name: str, cache_dir: Path, session: requests.Session | None = None) -> dict | None:
     cache_dir = Path(cache_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
     safe = name.replace("/", "__")
@@ -35,7 +36,7 @@ def fetchFull(name: str, cache_dir: Path, session: Optional[requests.Session] = 
         return None
 
 
-def sortVersionsDesc(versions: List[str]) -> List[str]:
+def sortVersionsDesc(versions: list[str]) -> list[str]:
     def key(v):
         m = SEMVER_RE.match(v)
         if not m:

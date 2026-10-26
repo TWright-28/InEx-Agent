@@ -7,7 +7,7 @@ behaviour.
 """
 import pytest
 
-from tools.core.dependencies import DependencySnapshotter, _parseTs, _isPrerelease
+from tools.core.dependencies import DependencySnapshotter, _isPrerelease, _parseTs
 from tools.core.npm_registry import sortVersionsDesc
 
 

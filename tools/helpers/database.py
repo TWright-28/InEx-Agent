@@ -1,8 +1,7 @@
+import json
 import sqlite3
 import threading
-from config import DB_PATH
 from datetime import datetime
-import json
 
 
 class InExTool:

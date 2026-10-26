@@ -1,4 +1,5 @@
 import os
+
 os.environ["DATABASE_URL"] = "db/eval_test.db"
 
 import contextlib
@@ -6,10 +7,11 @@ import sqlite3
 import uuid
 from unittest.mock import patch
 
-from config import orchestrator, temperature, systemPrompt, num_ctx
 from langchain.agents import create_agent
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langsmith import Client
+
+from config import num_ctx, orchestrator, systemPrompt, temperature
 
 DATASET_NAME = "InEx-Agent-v5"
 
@@ -165,10 +167,15 @@ def ensure_dataset(client: Client):
 
 def build_agent():
     from tools.langchain_tools import (
-        collect_all, count_issues, classify_all, preview_classification,
-        snapshot_dependencies, run_sql, export_data,
+        classify_all,
+        collect_all,
+        count_issues,
+        export_data,
+        preview_classification,
+        run_sql,
+        snapshot_dependencies,
     )
-    with open(systemPrompt, "r", encoding="utf-8") as f:
+    with open(systemPrompt, encoding="utf-8") as f:
         base_prompt = f.read()
     system_prompt = base_prompt
 

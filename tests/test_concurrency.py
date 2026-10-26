@@ -7,7 +7,6 @@ import threading
 import time
 
 import pytest
-
 from conftest import FULL_PROBS, PROMPT, row_for
 
 
@@ -124,8 +123,9 @@ class TestRaces:
     def test_retry_state_is_not_shared_between_workers(self, rows):
         """A single tenacity Retrying object carries per-run state; workers sharing
         one would interfere with each other's attempt counts."""
-        from tools.helpers.classify import Classify, AttemptFailure
         import collections
+
+        from tools.helpers.classify import AttemptFailure, Classify
 
         seen = collections.Counter()
         lock = threading.Lock()

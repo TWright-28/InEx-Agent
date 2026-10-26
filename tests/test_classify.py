@@ -2,7 +2,6 @@
 the structured-output schema."""
 import pytest
 import requests
-
 from conftest import FULL_PROBS, row_for
 
 
@@ -212,8 +211,9 @@ class TestIdentity:
         assert classifier.prompt_version != "prompts/classification_prompt.md"
 
     def test_same_prompt_gives_a_stable_version(self, classifier):
-        from tools.helpers.classify import Classify
         from conftest import PROMPT
+
+        from tools.helpers.classify import Classify
         again = Classify("qwen3:30b", 0.2, PROMPT)
         assert again.prompt_version == classifier.prompt_version
 
@@ -242,6 +242,7 @@ class TestStructuredSchema:
         """$defs is dropped by the converter; the $ref must be inlined first or the
         nested probabilities object would silently vanish."""
         from langchain_google_genai._function_utils import _dict_to_gapic_schema
+
         from tools.helpers.classify import ClassificationResult
         gapic = _dict_to_gapic_schema(ClassificationResult.model_json_schema())
         probs = gapic.properties["probabilities"]
@@ -258,6 +259,7 @@ class TestRouting:
         assert classifier.useStructured is False
 
     def test_colon_in_an_ollama_tag_is_not_a_provider(self):
-        from tools.helpers.classify import Classify
         from conftest import PROMPT
+
+        from tools.helpers.classify import Classify
         assert Classify("qwen3:30b", 0.2, PROMPT).useStructured is False

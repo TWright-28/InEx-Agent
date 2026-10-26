@@ -1,7 +1,6 @@
 """Storage guarantees: the migration, run-scoped resume, and the invariant that a
 failed attempt is never stored as a taxonomy label."""
 import pytest
-
 from conftest import FULL_PROBS
 
 RUN = dict(model="google_genai:gemini-2.5-pro", prompt="inex@abc123+t2", temp=0.2)

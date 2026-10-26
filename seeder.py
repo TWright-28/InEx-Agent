@@ -1,8 +1,9 @@
+import glob
 import json
 import sys
-import glob
-from tools.helpers.database import InExTool
+
 from config import DB_PATH
+from tools.helpers.database import InExTool
 
 target = sys.argv[1] if len(sys.argv) > 1 else None
 
@@ -11,6 +12,7 @@ if not target:
     sys.exit(1)
 
 import os
+
 if os.path.isdir(target):
     files = glob.glob(os.path.join(target, "**", "*.jsonl"), recursive=True)
 else:
@@ -30,7 +32,7 @@ for filepath in files:
     loaded = 0
     classified = 0
 
-    with open(filepath, 'r', encoding='utf-8') as f:
+    with open(filepath, encoding='utf-8') as f:
         for line in f:
             if not line.strip():
                 continue

@@ -1,18 +1,30 @@
-from config import orchestrator, temperature, systemPrompt, num_ctx
-from langchain.agents import create_agent
-from tools.langchain_tools import collect_all, classify_all, count_issues, preview_classification, snapshot_dependencies, run_sql, export_data, preview_issue_list, import_issue_list
-from langgraph.checkpoint.sqlite import SqliteSaver
+import json
 import logging
 import logging.config
-import json
 import os
-import uuid
 import sqlite3
+import uuid
+
+from langchain.agents import create_agent
+from langgraph.checkpoint.sqlite import SqliteSaver
+
+from config import num_ctx, orchestrator, systemPrompt, temperature
+from tools.langchain_tools import (
+    classify_all,
+    collect_all,
+    count_issues,
+    export_data,
+    import_issue_list,
+    preview_classification,
+    preview_issue_list,
+    run_sql,
+    snapshot_dependencies,
+)
 
 with open("loggingConfigs/config.json") as f:
     logging.config.dictConfig(json.load(f))
 
-with open(systemPrompt, "r", encoding="utf-8") as f:
+with open(systemPrompt, encoding="utf-8") as f:
     base_prompt = f.read()
 
 system_prompt = base_prompt
