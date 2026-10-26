@@ -8,7 +8,7 @@ from conftest import FULL_PROBS, row_for
 
 class TestValidateResult:
     def _r(self, cl, label, probs):
-        from tools.helpers.classify import ParsedResult
+        from inex.services.classification import ParsedResult
 
         return cl.validateResult(ParsedResult(label=label, probs=probs))
 
@@ -111,7 +111,7 @@ class TestRetryPolicy:
 
 class TestRetryLoop:
     def test_transient_failure_recovers_and_counts_attempts(self, classifier):
-        from tools.helpers.classify import AttemptFailure, ParsedResult
+        from inex.services.classification import AttemptFailure, ParsedResult
 
         calls = {"n": 0}
 
@@ -126,7 +126,7 @@ class TestRetryLoop:
         assert r.status == "ok" and r.attempts == 3
 
     def test_exhausted_retries_record_a_failure_not_a_label(self, classifier):
-        from tools.helpers.classify import AttemptFailure
+        from inex.services.classification import AttemptFailure
 
         classifier.retry_attempts = 3
         classifier.callOllama = lambda _p: (_ for _ in ()).throw(
@@ -139,7 +139,7 @@ class TestRetryLoop:
         assert r.attempts == 3
 
     def test_non_retryable_fails_fast(self, classifier):
-        from tools.helpers.classify import AttemptFailure
+        from inex.services.classification import AttemptFailure
 
         calls = {"n": 0}
 
@@ -172,7 +172,7 @@ class TestRetryLoop:
         assert getattr(exc.value, "classify_attempts", None) == 4
 
     def test_empty_ollama_response_is_a_failure_not_a_label(self, classifier, monkeypatch):
-        import tools.helpers.classify as mod
+        import inex.services.classification as mod
 
         class Resp:
             def raise_for_status(self):
@@ -236,9 +236,9 @@ class TestIdentity:
     def test_same_prompt_gives_a_stable_version(self, classifier):
         from conftest import PROMPT
 
-        from tools.helpers.classify import Classify
+        from inex.services.classification import ClassificationService
 
-        again = Classify("qwen3:30b", 0.2, PROMPT)
+        again = ClassificationService(None, PROMPT, "qwen3:30b", 0.2)
         assert again.prompt_version == classifier.prompt_version
 
 
@@ -246,20 +246,20 @@ class TestStructuredSchema:
     def test_reasoning_precedes_the_answer(self):
         """Gemini emits properties in schema order, so reasoning fields must come
         before probabilities and final_answer."""
-        from tools.helpers.classify import ClassificationResult
+        from inex.services.classification import ClassificationResult
 
         order = list(ClassificationResult.model_json_schema()["properties"])
         assert order.index("definition_check") < order.index("probabilities")
         assert order.index("probabilities") < order.index("final_answer")
 
     def test_every_field_is_required(self):
-        from tools.helpers.classify import ClassificationResult
+        from inex.services.classification import ClassificationResult
 
         js = ClassificationResult.model_json_schema()
         assert len(js["required"]) == len(js["properties"])
 
     def test_final_answer_enumerates_the_taxonomy(self):
-        from tools.helpers.classify import ClassificationResult
+        from inex.services.classification import ClassificationResult
 
         js = ClassificationResult.model_json_schema()
         assert set(js["properties"]["final_answer"]["enum"]) == {
@@ -274,7 +274,7 @@ class TestStructuredSchema:
         nested probabilities object would silently vanish."""
         from langchain_google_genai._function_utils import _dict_to_gapic_schema
 
-        from tools.helpers.classify import ClassificationResult
+        from inex.services.classification import ClassificationResult
 
         gapic = _dict_to_gapic_schema(ClassificationResult.model_json_schema())
         probs = gapic.properties["probabilities"]
@@ -293,6 +293,6 @@ class TestRouting:
     def test_colon_in_an_ollama_tag_is_not_a_provider(self):
         from conftest import PROMPT
 
-        from tools.helpers.classify import Classify
+        from inex.services.classification import ClassificationService
 
-        assert Classify("qwen3:30b", 0.2, PROMPT).useStructured is False
+        assert ClassificationService(None, PROMPT, "qwen3:30b", 0.2).useStructured is False

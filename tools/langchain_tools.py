@@ -15,16 +15,16 @@ from config import (
 )
 from inex.clients.npm import NpmClient
 from inex.errors import InexError
+from inex.services.classification import ClassificationService
 from inex.services.collection import CollectionService
 from inex.services.linkage import LinkageService
 from inex.store.database import Store
-from tools.helpers.classify import Classify
 from tools.helpers.issueList import parseIssueListCsv
 from tools.helpers.sqlQuery import MAX_SQL_ROWS, describeSchema, exportQuery, runSql
 
 db = Store(DB_PATH)
-cl = Classify(
-    classifier, temperature, classifyPrompt, workers=classifyWorkers, retry_attempts=classifyRetries
+cl = ClassificationService(
+    db, classifyPrompt, classifier, temperature, workers=classifyWorkers, retries=classifyRetries
 )
 linkage = LinkageService(db, NpmClient(Path(".npm_doc_cache")))
 
@@ -86,9 +86,13 @@ def classify_all(
     owner, repo = parts
     if end_date and len(end_date) == 10:
         end_date = end_date + "T23:59:59Z"
-    return cl.classifyAll(
-        owner, repo, db, max_issues=count, start=start_date, end=end_date, direction=direction
-    )
+    try:
+        result = cl.classify(
+            owner, repo, count=count, start=start_date, end=end_date, order=direction
+        )
+    except InexError as e:
+        return {"status": "error", "code": e.code, "message": e.message}
+    return {"status": "ok", **asdict(result)}
 
 
 @tool(
@@ -162,9 +166,11 @@ def preview_classification(
     owner, repo = parts
     if end and len(end) == 10:
         end = end + "T23:59:59Z"
-    return cl.previewClassification(
-        owner, repo, db, max_count=count, start=start, end=end, direction=direction
-    )
+    try:
+        result = cl.preview(owner, repo, count=count, start=start, end=end, order=direction)
+    except InexError as e:
+        return {"status": "error", "code": e.code, "message": e.message}
+    return {"status": "ok", **asdict(result)}
 
 
 @tool(
@@ -234,7 +240,7 @@ def import_issue_list(csv_path: str, column: str = None, classify: bool = True) 
         collected, skipped, failed = specific.collected, specific.skipped, specific.failed
         classified = 0
         if classify and issue_ids:
-            cl.classifyByIds(owner, repo, issue_ids, db)
+            cl.classify_ids(owner, repo, issue_ids)
             # Scope the count to this run's model/prompt/temperature and to rows that
             # actually succeeded, otherwise legacy rows and failed attempts are both
             # reported as newly classified.

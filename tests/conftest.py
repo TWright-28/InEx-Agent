@@ -91,9 +91,9 @@ def seeded_classified(seeded):
 @pytest.fixture
 def classifier():
     """Ollama-path classifier: never reaches the network in these tests."""
-    from tools.helpers.classify import Classify
+    from inex.services.classification import ClassificationService
 
-    cl = Classify("qwen3:30b", 0.2, PROMPT, workers=1)
+    cl = ClassificationService(None, PROMPT, "qwen3:30b", 0.2, workers=1)
     cl.retry_wait = lambda *a, **k: 0
     return cl
 
@@ -101,10 +101,10 @@ def classifier():
 @pytest.fixture
 def cloud_classifier():
     """Cloud-path classifier: constructed only, no request is ever issued."""
-    from tools.helpers.classify import Classify
+    from inex.services.classification import ClassificationService
 
     os.environ.setdefault("GOOGLE_API_KEY", "test-key-not-used")
-    cl = Classify("google_genai:gemini-2.5-pro", 0.2, PROMPT, workers=1)
+    cl = ClassificationService(None, PROMPT, "google_genai:gemini-2.5-pro", 0.2, workers=1)
     cl.retry_wait = lambda *a, **k: 0
     return cl
 

@@ -18,3 +18,4 @@ ban-relative-imports = "all"
 "agent.py" = ["N"]
 "tests/test_concurrency.py" = ["N802"]
 "inex/services/collection.py" = ["N"]
+"inex/services/classification.py" = ["N"]
