@@ -1,5 +1,6 @@
 """Classifier behaviour: result validation, retry policy, prompt construction, and
 the structured-output schema."""
+
 import pytest
 import requests
 from conftest import FULL_PROBS, row_for
@@ -8,6 +9,7 @@ from conftest import FULL_PROBS, row_for
 class TestValidateResult:
     def _r(self, cl, label, probs):
         from tools.helpers.classify import ParsedResult
+
         return cl.validateResult(ParsedResult(label=label, probs=probs))
 
     def test_complete_result_passes_clean(self, classifier):
@@ -50,12 +52,15 @@ class TestRetryPolicy:
     def _http(self, code):
         class Resp:
             status_code = code
+
         e = requests.exceptions.HTTPError()
         e.response = Resp()
         return e
 
-    @pytest.mark.parametrize("code,expected", [(429, True), (500, True), (503, True),
-                                               (400, False), (401, False), (404, False)])
+    @pytest.mark.parametrize(
+        "code,expected",
+        [(429, True), (500, True), (503, True), (400, False), (401, False), (404, False)],
+    )
     def test_http_status_codes(self, classifier, code, expected):
         assert classifier._isRetryable(self._http(code)) is expected
 
@@ -65,6 +70,7 @@ class TestRetryPolicy:
 
     def test_google_server_error_retries(self, classifier):
         from google.genai import errors as ge
+
         e = ge.ServerError.__new__(ge.ServerError)
         Exception.__init__(e, "503 UNAVAILABLE")
         assert classifier._isRetryable(e)
@@ -72,12 +78,14 @@ class TestRetryPolicy:
     def test_quota_error_retries_via_cause_code(self, classifier):
         """langchain-google-genai wraps a 429 as ChatGoogleGenerativeAIError with the
         google.genai ClientError as __cause__. google.api_core is never involved."""
+
         class ChatGoogleGenerativeAIError(Exception):
             pass
 
         class ClientError(Exception):
             def __init__(self, code):
                 self.code = code
+
         e = ChatGoogleGenerativeAIError("quota")
         e.__cause__ = ClientError(429)
         assert classifier._isRetryable(e)
@@ -89,6 +97,7 @@ class TestRetryPolicy:
         class ClientError(Exception):
             def __init__(self, code):
                 self.code = code
+
         e = ChatGoogleGenerativeAIError("denied")
         e.__cause__ = ClientError(403)
         assert classifier._isRetryable(e) is False
@@ -96,12 +105,14 @@ class TestRetryPolicy:
     def test_context_overflow_does_not_retry(self, classifier):
         class GoogleContextOverflowError(Exception):
             pass
+
         assert classifier._isRetryable(GoogleContextOverflowError()) is False
 
 
 class TestRetryLoop:
     def test_transient_failure_recovers_and_counts_attempts(self, classifier):
         from tools.helpers.classify import AttemptFailure, ParsedResult
+
         calls = {"n": 0}
 
         def flaky(_prompt):
@@ -116,9 +127,11 @@ class TestRetryLoop:
 
     def test_exhausted_retries_record_a_failure_not_a_label(self, classifier):
         from tools.helpers.classify import AttemptFailure
+
         classifier.retry_attempts = 3
         classifier.callOllama = lambda _p: (_ for _ in ()).throw(
-            AttemptFailure("parse_error", "never parses", raw_text="junk", retryable=True))
+            AttemptFailure("parse_error", "never parses", raw_text="junk", retryable=True)
+        )
         r = classifier.callModel("x")
         assert r.status == "parse_error"
         assert r.label is None
@@ -127,6 +140,7 @@ class TestRetryLoop:
 
     def test_non_retryable_fails_fast(self, classifier):
         from tools.helpers.classify import AttemptFailure
+
         calls = {"n": 0}
 
         def truncated(_p):
@@ -141,6 +155,7 @@ class TestRetryLoop:
         """A hard failure propagates out of callModel; the count must ride along or
         the audit column reports 1 for something that was retried."""
         from google.genai import errors as ge
+
         classifier.retry_attempts = 4
         calls = {"n": 0}
 
@@ -172,8 +187,15 @@ class TestRetryLoop:
 
 
 class TestPromptConstruction:
-    ISSUE = {"owner": "acme", "repo": "widget", "number": 1,
-             "title": None, "body": None, "state_reason": "not_planned", "comments": []}
+    ISSUE = {
+        "owner": "acme",
+        "repo": "widget",
+        "number": 1,
+        "title": None,
+        "body": None,
+        "state_reason": "not_planned",
+        "comments": [],
+    }
 
     def test_state_reason_is_passed_to_the_model(self, classifier):
         assert "**Closed Reason:** not_planned" in classifier.formatIssueData(self.ISSUE)
@@ -198,6 +220,7 @@ class TestPromptConstruction:
 
     def test_raw_data_cannot_override_explicit_columns(self, classifier):
         import json
+
         raw = json.dumps({"title": "EVIL", "state": "EVIL", "labels": []})
         _id, number, issue = classifier._prepareIssue("acme", "widget", row_for(1, raw_data=raw))
         assert issue["title"] == "a title"
@@ -214,6 +237,7 @@ class TestIdentity:
         from conftest import PROMPT
 
         from tools.helpers.classify import Classify
+
         again = Classify("qwen3:30b", 0.2, PROMPT)
         assert again.prompt_version == classifier.prompt_version
 
@@ -223,20 +247,27 @@ class TestStructuredSchema:
         """Gemini emits properties in schema order, so reasoning fields must come
         before probabilities and final_answer."""
         from tools.helpers.classify import ClassificationResult
+
         order = list(ClassificationResult.model_json_schema()["properties"])
         assert order.index("definition_check") < order.index("probabilities")
         assert order.index("probabilities") < order.index("final_answer")
 
     def test_every_field_is_required(self):
         from tools.helpers.classify import ClassificationResult
+
         js = ClassificationResult.model_json_schema()
         assert len(js["required"]) == len(js["properties"])
 
     def test_final_answer_enumerates_the_taxonomy(self):
         from tools.helpers.classify import ClassificationResult
+
         js = ClassificationResult.model_json_schema()
         assert set(js["properties"]["final_answer"]["enum"]) == {
-            "Intrinsic", "Extrinsic", "Not a Bug", "Unknown"}
+            "Intrinsic",
+            "Extrinsic",
+            "Not a Bug",
+            "Unknown",
+        }
 
     def test_schema_survives_conversion_for_gemini(self):
         """$defs is dropped by the converter; the $ref must be inlined first or the
@@ -244,6 +275,7 @@ class TestStructuredSchema:
         from langchain_google_genai._function_utils import _dict_to_gapic_schema
 
         from tools.helpers.classify import ClassificationResult
+
         gapic = _dict_to_gapic_schema(ClassificationResult.model_json_schema())
         probs = gapic.properties["probabilities"]
         assert set(probs.properties) == {"intrinsic", "extrinsic", "not_a_bug", "unknown"}
@@ -262,4 +294,5 @@ class TestRouting:
         from conftest import PROMPT
 
         from tools.helpers.classify import Classify
+
         assert Classify("qwen3:30b", 0.2, PROMPT).useStructured is False

@@ -1,5 +1,6 @@
 """Storage guarantees: the migration, run-scoped resume, and the invariant that a
 failed attempt is never stored as a taxonomy label."""
+
 import pytest
 from conftest import FULL_PROBS
 
@@ -10,12 +11,19 @@ OTHER = dict(model="qwen3:30b", prompt="inex@abc123+t2", temp=0.2)
 def save(db, issue_id, label=None, status="ok", probs=None, **over):
     kw = dict(RUN)
     kw.update(over)
-    return db.save_classification(issue_id, {
-        "classification": label,
-        "classification_probabilities": probs if probs is not None else (FULL_PROBS if label else {}),
-        "classification_raw_response": "{}",
-        "status": status,
-    }, classifiedat="2026-10-26T00:00:00", **kw)
+    return db.save_classification(
+        issue_id,
+        {
+            "classification": label,
+            "classification_probabilities": probs
+            if probs is not None
+            else (FULL_PROBS if label else {}),
+            "classification_raw_response": "{}",
+            "status": status,
+        },
+        classifiedat="2026-10-26T00:00:00",
+        **kw,
+    )
 
 
 class TestMigration:
@@ -26,6 +34,7 @@ class TestMigration:
 
     def test_migration_is_idempotent(self, db_path):
         from tools.helpers.database import InExTool
+
         InExTool(db_path)
         InExTool(db_path)  # re-running must not raise on existing columns
 
@@ -35,8 +44,8 @@ class TestFailuresAreNotLabels:
         db, _, ids = seeded
         save(db, ids[0], label=None, status="api_error")
         row = db.cursor.execute(
-            "SELECT classification, status FROM classifications WHERE issue_id=?",
-            (ids[0],)).fetchone()
+            "SELECT classification, status FROM classifications WHERE issue_id=?", (ids[0],)
+        ).fetchone()
         assert row == (None, "api_error")
 
     def test_storing_a_label_with_a_failed_status_is_refused(self, seeded):
@@ -81,7 +90,9 @@ class TestResumeIsRunScoped:
         db, pid, ids = seeded
         db.cursor.execute(
             "INSERT INTO classifications(issue_id, classification, model, prompt_version, temperature) "
-            "VALUES(?,?,?,?,?)", (ids[0], "Intrinsic", RUN["model"], RUN["prompt"], RUN["temp"]))
+            "VALUES(?,?,?,?,?)",
+            (ids[0], "Intrinsic", RUN["model"], RUN["prompt"], RUN["temp"]),
+        )
         db.connection.commit()
         remaining = [r[0] for r in db.getUnclassifiedInWindow(pid, **_keys(RUN))]
         assert ids[0] not in remaining
@@ -111,7 +122,8 @@ class TestUpsert:
         save(db, ids[0], label=None, status="api_error")
         save(db, ids[0], label="Intrinsic")
         n = db.cursor.execute(
-            "SELECT COUNT(*) FROM classifications WHERE issue_id=?", (ids[0],)).fetchone()[0]
+            "SELECT COUNT(*) FROM classifications WHERE issue_id=?", (ids[0],)
+        ).fetchone()[0]
         assert n == 1
 
     def test_different_prompt_version_adds_a_row(self, seeded):
@@ -119,7 +131,8 @@ class TestUpsert:
         save(db, ids[0], label="Intrinsic")
         save(db, ids[0], label="Extrinsic", prompt="inex@DIFFERENT+t2")
         n = db.cursor.execute(
-            "SELECT COUNT(*) FROM classifications WHERE issue_id=?", (ids[0],)).fetchone()[0]
+            "SELECT COUNT(*) FROM classifications WHERE issue_id=?", (ids[0],)
+        ).fetchone()[0]
         assert n == 2
 
     def test_returned_id_is_for_the_right_run(self, seeded):
@@ -151,5 +164,4 @@ class TestAggregatesExcludeFailures:
 
 
 def _keys(run):
-    return {"model": run["model"], "prompt_version": run["prompt"],
-            "temperature": run["temp"]}
+    return {"model": run["model"], "prompt_version": run["prompt"], "temperature": run["temp"]}

@@ -5,6 +5,7 @@ with this implementation on 35% of a 53,000-issue corpus, almost all of it
 prereleases being treated as the live release. These tests pin the correct
 behaviour.
 """
+
 import pytest
 
 from tools.core.dependencies import DependencySnapshotter, _isPrerelease, _parseTs
@@ -20,6 +21,7 @@ def pick():
         ordered = sortVersionsDesc(list(times))
         got = snap._live_version_at(issue_date, [(v, times.get(v)) for v in ordered])
         return got[0] if got else None
+
     return _pick
 
 
@@ -27,15 +29,19 @@ class TestPublishOrder:
     def test_backport_published_after_a_major_wins(self, pick):
         """1.9.5 ships after 2.0.0. Semver order puts it below 2.x, so the old
         heuristic skipped it and linked the issue to 2.0.0."""
-        times = {"1.9.0": "2019-06-01T00:00:00.000Z",
-                 "2.0.0": "2020-01-01T00:00:00.000Z",
-                 "1.9.5": "2020-06-01T00:00:00.000Z"}
+        times = {
+            "1.9.0": "2019-06-01T00:00:00.000Z",
+            "2.0.0": "2020-01-01T00:00:00.000Z",
+            "1.9.5": "2020-06-01T00:00:00.000Z",
+        }
         assert pick(times, "2020-07-01T00:00:00Z") == "1.9.5"
 
     def test_normal_history_is_unaffected(self, pick):
-        times = {"1.0.0": "2019-01-01T00:00:00.000Z",
-                 "1.1.0": "2019-06-01T00:00:00.000Z",
-                 "2.0.0": "2020-01-01T00:00:00.000Z"}
+        times = {
+            "1.0.0": "2019-01-01T00:00:00.000Z",
+            "1.1.0": "2019-06-01T00:00:00.000Z",
+            "2.0.0": "2020-01-01T00:00:00.000Z",
+        }
         assert pick(times, "2019-08-01T00:00:00Z") == "1.1.0"
         assert pick(times, "2021-01-01T00:00:00Z") == "2.0.0"
 
@@ -48,8 +54,7 @@ class TestPrereleases:
     def test_a_newer_prerelease_does_not_displace_the_stable_release(self, pick):
         """The dominant correction: a prerelease is never the npm `latest` tag and
         is not what a reporter installed."""
-        times = {"2.0.0": "2020-01-01T00:00:00.000Z",
-                 "2.1.0-next.999": "2020-06-01T00:00:00.000Z"}
+        times = {"2.0.0": "2020-01-01T00:00:00.000Z", "2.1.0-next.999": "2020-06-01T00:00:00.000Z"}
         assert pick(times, "2020-07-01T00:00:00Z") == "2.0.0"
 
     def test_prerelease_used_when_no_stable_exists_yet(self, pick):
@@ -65,8 +70,7 @@ class TestTimestamps:
     def test_release_half_a_second_after_the_issue_is_excluded(self, pick):
         """npm reports sub-second precision, GitHub does not. Compared as raw
         strings, '.' sorts before 'Z' and the release looked earlier."""
-        times = {"1.0.0": "2019-01-01T00:00:00.000Z",
-                 "1.1.0": "2020-01-01T09:00:00.500Z"}
+        times = {"1.0.0": "2019-01-01T00:00:00.000Z", "1.1.0": "2020-01-01T09:00:00.500Z"}
         assert pick(times, "2020-01-01T09:00:00Z") == "1.0.0"
 
     def test_identical_instant_in_both_formats_is_included(self, pick):

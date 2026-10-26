@@ -34,8 +34,10 @@ def build_llm():
     provider, _, model_name = orchestrator.partition(":")
     if provider == "ollama":
         from langchain_ollama import ChatOllama
+
         return ChatOllama(model=model_name, temperature=temperature, num_ctx=num_ctx)
     from langchain.chat_models import init_chat_model
+
     return init_chat_model(orchestrator, temperature=temperature)
 
 
@@ -49,7 +51,17 @@ checkpointer = SqliteSaver(checkpoint_conn)
 
 agent = create_agent(
     model=llm,
-    tools= [collect_all, count_issues, classify_all, preview_classification, snapshot_dependencies, run_sql, export_data, preview_issue_list, import_issue_list,],
+    tools=[
+        collect_all,
+        count_issues,
+        classify_all,
+        preview_classification,
+        snapshot_dependencies,
+        run_sql,
+        export_data,
+        preview_issue_list,
+        import_issue_list,
+    ],
     system_prompt=system_prompt,
     checkpointer=checkpointer,
 )
@@ -58,13 +70,11 @@ thread_id = str(uuid.uuid4())
 config = {"configurable": {"thread_id": thread_id}}
 print(f"InEx Bug Agent - Thread {thread_id[:8]} - type 'q' to quit")
 
-while True: 
+while True:
     q = input("You: ")
-    if q=="q":
+    if q == "q":
         break
     inputs = {"messages": [{"role": "user", "content": q}]}
     results = agent.invoke(inputs, config=config)
 
     print(f"Agent: {results['messages'][-1].content}")
-    
-    

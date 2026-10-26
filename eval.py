@@ -15,22 +15,35 @@ from config import num_ctx, orchestrator, systemPrompt, temperature
 
 DATASET_NAME = "InEx-Agent-v5"
 
-MOCK_COLLECT  = "Collected 10 issues from yeoman/yeoman-test (skipped 0 already in DB)."
+MOCK_COLLECT = "Collected 10 issues from yeoman/yeoman-test (skipped 0 already in DB)."
 MOCK_CLASSIFY = "Classified 10 issues from yeoman/yeoman-test."
-MOCK_PREVIEW  = {
-    "status": "ok", "owner": "yeoman", "repo": "yeoman-test",
+MOCK_PREVIEW = {
+    "status": "ok",
+    "owner": "yeoman",
+    "repo": "yeoman-test",
     "would_classify": 10,
     "earliest_created": "2023-01-01T00:00:00Z",
-    "latest_created":   "2023-12-01T00:00:00Z",
+    "latest_created": "2023-12-01T00:00:00Z",
     "sample": [{"issue_number": 101, "title": "Test runner fails on async"}],
 }
 MOCK_SNAPSHOT = {
-    "status": "ok", "package_name": "yeoman-test",
-    "owner": "yeoman", "repo": "yeoman-test",
-    "issue_versions_snapshotted": 3, "slice_versions_snapshotted": 0,
-    "linked_issues": 3, "already_linked": 0, "unlinkable_pre_release": 0,
-    "window": {"start": None, "end": None, "version_range": None,
-               "last_n_versions": None, "version_start": None, "version_end": None},
+    "status": "ok",
+    "package_name": "yeoman-test",
+    "owner": "yeoman",
+    "repo": "yeoman-test",
+    "issue_versions_snapshotted": 3,
+    "slice_versions_snapshotted": 0,
+    "linked_issues": 3,
+    "already_linked": 0,
+    "unlinkable_pre_release": 0,
+    "window": {
+        "start": None,
+        "end": None,
+        "version_range": None,
+        "last_n_versions": None,
+        "version_start": None,
+        "version_end": None,
+    },
 }
 DEFAULT_COUNT = 45
 
@@ -68,6 +81,7 @@ VALUES
 
 def seed_test_db():
     from tools.helpers.database import InExTool
+
     db = InExTool("db/eval_test.db")
     db.connection.close()
     conn = sqlite3.connect("db/eval_test.db")
@@ -77,74 +91,106 @@ def seed_test_db():
     print("Test DB seeded.")
 
 
-
 EXAMPLES = [
     # 1 - unbounded collect, small repo (45 < 1000): counts then proceeds
     {
-        "inputs":  {"request": "collect issues from yeoman/yeoman-test",
-                    "count_issues_returns": 45},
-        "outputs": {"expected_tool": "collect_all", "before": "count_issues",
-                    "must_not_call": None},
+        "inputs": {"request": "collect issues from yeoman/yeoman-test", "count_issues_returns": 45},
+        "outputs": {
+            "expected_tool": "collect_all",
+            "before": "count_issues",
+            "must_not_call": None,
+        },
     },
     # 2 - dependency snapshot (seeded DB already has classifications)
     {
-        "inputs":  {"request": "get the dependency snapshot for yeoman/yeoman-test "
-                               "using the npm package yeoman-test"},
-        "outputs": {"expected_tool": "snapshot_dependencies", "before": None,
-                    "must_not_call": None},
+        "inputs": {
+            "request": "get the dependency snapshot for yeoman/yeoman-test "
+            "using the npm package yeoman-test"
+        },
+        "outputs": {
+            "expected_tool": "snapshot_dependencies",
+            "before": None,
+            "must_not_call": None,
+        },
     },
     # 3 - multi-turn: user confirms -> classify_all runs after preview
     {
-        "inputs":  {"turns": ["classify the issues for yeoman/yeoman-test", "yes, go ahead"]},
-        "outputs": {"expected_tool": "classify_all", "before": "preview_classification",
-                    "must_not_call": None},
+        "inputs": {"turns": ["classify the issues for yeoman/yeoman-test", "yes, go ahead"]},
+        "outputs": {
+            "expected_tool": "classify_all",
+            "before": "preview_classification",
+            "must_not_call": None,
+        },
     },
     # 4 - multi-turn: user declines -> classify_all must NOT run
     {
-        "inputs":  {"turns": ["classify the issues for yeoman/yeoman-test", "no, don't classify them"]},
-        "outputs": {"expected_tool": "preview_classification", "before": None,
-                    "must_not_call": "classify_all"},
+        "inputs": {
+            "turns": ["classify the issues for yeoman/yeoman-test", "no, don't classify them"]
+        },
+        "outputs": {
+            "expected_tool": "preview_classification",
+            "before": None,
+            "must_not_call": "classify_all",
+        },
     },
     # 5 - analysis question -> run_sql
     {
-        "inputs":  {"request": "how many issues does yeoman-test have and "
-                               "what is the classification breakdown?"},
-        "outputs": {"expected_tool": "run_sql", "before": None,
-                    "must_not_call": None},
+        "inputs": {
+            "request": "how many issues does yeoman-test have and "
+            "what is the classification breakdown?"
+        },
+        "outputs": {"expected_tool": "run_sql", "before": None, "must_not_call": None},
     },
     # 6 - export request -> export_data, not run_sql
     {
-        "inputs":  {"request": "export the classification data for yeoman-test to a csv file"},
-        "outputs": {"expected_tool": "export_data", "before": None,
-                    "must_not_call": None},
+        "inputs": {"request": "export the classification data for yeoman-test to a csv file"},
+        "outputs": {"expected_tool": "export_data", "before": None, "must_not_call": None},
     },
     # 7 - standalone count -> count_issues, must NOT proceed to collect
     {
-        "inputs":  {"request": "how many issues does yeoman/yeoman-test have?",
-                    "count_issues_returns": 45},
-        "outputs": {"expected_tool": "count_issues", "before": None,
-                    "must_not_call": "collect_all"},
+        "inputs": {
+            "request": "how many issues does yeoman/yeoman-test have?",
+            "count_issues_returns": 45,
+        },
+        "outputs": {
+            "expected_tool": "count_issues",
+            "before": None,
+            "must_not_call": "collect_all",
+        },
     },
     # 8 - standalone preview -> preview_classification, must NOT proceed to classify
     {
-        "inputs":  {"request": "show me what would be classified for yeoman/yeoman-test "
-                               "without actually classifying anything"},
-        "outputs": {"expected_tool": "preview_classification", "before": None,
-                    "must_not_call": "classify_all"},
+        "inputs": {
+            "request": "show me what would be classified for yeoman/yeoman-test "
+            "without actually classifying anything"
+        },
+        "outputs": {
+            "expected_tool": "preview_classification",
+            "before": None,
+            "must_not_call": "classify_all",
+        },
     },
     # 9 - bounded collect -> user gave a count, must NOT redundantly count first
     {
-        "inputs":  {"request": "collect the 50 most recent issues from yeoman/yeoman-test"},
-        "outputs": {"expected_tool": "collect_all", "before": None,
-                    "must_not_call": "count_issues"},
+        "inputs": {"request": "collect the 50 most recent issues from yeoman/yeoman-test"},
+        "outputs": {
+            "expected_tool": "collect_all",
+            "before": None,
+            "must_not_call": "count_issues",
+        },
     },
     # 10 - unbounded collect, large repo (5000 >= 1000): counts, must pause for
     #      confirmation -> collect_all must NOT run within this single turn
     {
-        "inputs":  {"request": "collect issues from yeoman/yeoman-test",
-                    "count_issues_returns": 5000},
-        "outputs": {"expected_tool": "count_issues", "before": None,
-                    "must_not_call": "collect_all"},
+        "inputs": {
+            "request": "collect issues from yeoman/yeoman-test",
+            "count_issues_returns": 5000,
+        },
+        "outputs": {
+            "expected_tool": "count_issues",
+            "before": None,
+            "must_not_call": "collect_all",
+        },
     },
 ]
 
@@ -156,10 +202,10 @@ def ensure_dataset(client: Client):
     dataset = client.create_dataset(
         dataset_name=DATASET_NAME,
         description="Request -> expected tool call (with ordering and negative "
-                    "constraints) for InEx-Bug-Agent orchestration validation. "
-                    "Covers all 7 tool functions, standalone count, standalone "
-                    "preview, bounded collection, multi-turn confirm/decline, and "
-                    "the large-repo collect confirmation gate.",
+        "constraints) for InEx-Bug-Agent orchestration validation. "
+        "Covers all 7 tool functions, standalone count, standalone "
+        "preview, bounded collection, multi-turn confirm/decline, and "
+        "the large-repo collect confirmation gate.",
     )
     client.create_examples(dataset_id=dataset.id, examples=EXAMPLES)
     print(f"Created dataset '{DATASET_NAME}' with {len(EXAMPLES)} examples.")
@@ -175,6 +221,7 @@ def build_agent():
         run_sql,
         snapshot_dependencies,
     )
+
     with open(systemPrompt, encoding="utf-8") as f:
         base_prompt = f.read()
     system_prompt = base_prompt
@@ -182,17 +229,26 @@ def build_agent():
     provider, _, model_name = orchestrator.partition(":")
     if provider == "ollama":
         from langchain_ollama import ChatOllama
+
         llm = ChatOllama(model=model_name, temperature=temperature, num_ctx=num_ctx)
     else:
         from langchain.chat_models import init_chat_model
+
         llm = init_chat_model(orchestrator, temperature=temperature)
     mem_conn = sqlite3.connect(":memory:", check_same_thread=False)
     checkpointer = SqliteSaver(mem_conn)
 
     return create_agent(
         model=llm,
-        tools=[collect_all, count_issues, classify_all, preview_classification,
-               snapshot_dependencies, run_sql, export_data],
+        tools=[
+            collect_all,
+            count_issues,
+            classify_all,
+            preview_classification,
+            snapshot_dependencies,
+            run_sql,
+            export_data,
+        ],
         system_prompt=system_prompt,
         checkpointer=checkpointer,
     )
@@ -222,11 +278,26 @@ def target(inputs: dict) -> dict:
     prev_count = 0
 
     with contextlib.ExitStack() as stack:
-        stack.enter_context(patch("tools.helpers.collect.Collect.countIssues", return_value=count_return))
-        stack.enter_context(patch("tools.helpers.collect.Collect.collectAll", return_value=MOCK_COLLECT))
-        stack.enter_context(patch("tools.helpers.classify.Classify.classifyAll", return_value=MOCK_CLASSIFY))
-        stack.enter_context(patch("tools.helpers.classify.Classify.previewClassification", return_value=MOCK_PREVIEW))
-        stack.enter_context(patch("tools.core.dependencies.DependencySnapshotter.snapshot_for_classified", return_value=MOCK_SNAPSHOT))
+        stack.enter_context(
+            patch("tools.helpers.collect.Collect.countIssues", return_value=count_return)
+        )
+        stack.enter_context(
+            patch("tools.helpers.collect.Collect.collectAll", return_value=MOCK_COLLECT)
+        )
+        stack.enter_context(
+            patch("tools.helpers.classify.Classify.classifyAll", return_value=MOCK_CLASSIFY)
+        )
+        stack.enter_context(
+            patch(
+                "tools.helpers.classify.Classify.previewClassification", return_value=MOCK_PREVIEW
+            )
+        )
+        stack.enter_context(
+            patch(
+                "tools.core.dependencies.DependencySnapshotter.snapshot_for_classified",
+                return_value=MOCK_SNAPSHOT,
+            )
+        )
 
         for turn in turns:
             result = _AGENT.invoke({"messages": [{"role": "user", "content": turn}]}, config=config)

@@ -44,4 +44,5 @@ def sortVersionsDesc(versions: list[str]) -> list[str]:
         major, minor, patch = map(int, m.groups())
         is_pre = "-" in v
         return (major, minor, patch, 1 if is_pre else 0)
+
     return sorted(versions, key=key, reverse=True)

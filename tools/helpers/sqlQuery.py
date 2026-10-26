@@ -6,10 +6,10 @@ from datetime import datetime
 
 from config import DB_PATH
 
-#optional, can modify. setting to 50 since we in CLI
+# optional, can modify. setting to 50 since we in CLI
 MAX_SQL_ROWS = 50
 
-ro_conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True,check_same_thread=False)
+ro_conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True, check_same_thread=False)
 
 
 def describeSchema() -> dict:
@@ -27,9 +27,17 @@ def runSql(query: str) -> dict:
     low = q.lower()
 
     if not (low.startswith("select") or low.startswith("with")):
-        return {"status": "error", "code": "not_a_select", "message": "Only SELECT queries are allowed."}
+        return {
+            "status": "error",
+            "code": "not_a_select",
+            "message": "Only SELECT queries are allowed.",
+        }
     if ";" in q:
-        return {"status": "error", "code": "multiple_statements", "message": "Only one statement allowed."}
+        return {
+            "status": "error",
+            "code": "multiple_statements",
+            "message": "Only one statement allowed.",
+        }
     if "limit" not in low:
         q = f"{q} LIMIT {MAX_SQL_ROWS}"
 
@@ -55,13 +63,29 @@ def exportQuery(query: str, fmt: str = "csv", filename: str = None) -> dict:
     low = q.lower()
 
     if not (low.startswith("select") or low.startswith("with")):
-        return {"status": "error", "code": "not_a_select", "message": "Only SELECT queries are allowed."}
+        return {
+            "status": "error",
+            "code": "not_a_select",
+            "message": "Only SELECT queries are allowed.",
+        }
     if ";" in q:
-        return {"status": "error", "code": "multiple_statements", "message": "Only one statement allowed."}
+        return {
+            "status": "error",
+            "code": "multiple_statements",
+            "message": "Only one statement allowed.",
+        }
     if fmt not in ("csv", "json"):
-        return {"status": "error", "code": "invalid_format", "message": "format must be 'csv' or 'json'."}
+        return {
+            "status": "error",
+            "code": "invalid_format",
+            "message": "format must be 'csv' or 'json'.",
+        }
     if filename and (os.path.basename(filename) != filename or "/" in filename or "\\" in filename):
-        return {"status": "error", "code": "invalid_filename", "message": "filename must be a plain file name; exports are always written to exports/."}
+        return {
+            "status": "error",
+            "code": "invalid_filename",
+            "message": "filename must be a plain file name; exports are always written to exports/.",
+        }
 
     try:
         cur = ro_conn.cursor()

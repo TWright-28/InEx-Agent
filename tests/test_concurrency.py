@@ -3,6 +3,7 @@
 Three races had to be closed for this to be safe: shared tenacity retry state,
 duplicate client construction, and concurrent SQLite writes.
 """
+
 import threading
 import time
 
@@ -17,6 +18,7 @@ def rows():
 
 def _ok():
     from tools.helpers.classify import ParsedResult
+
     return ParsedResult(label="Intrinsic", probs=dict(FULL_PROBS), raw_text="{}")
 
 
@@ -37,9 +39,10 @@ class RecordingDB:
 
 def make(workers, classify_one):
     from tools.helpers.classify import Classify
+
     cl = Classify("google_genai:gemini-2.5-pro", 0.2, PROMPT, workers=workers)
     cl.retry_wait = lambda *a, **k: 0
-    cl._cloudStructured = lambda: None      # never build a real client
+    cl._cloudStructured = lambda: None  # never build a real client
     cl.classifyOne = classify_one
     return cl
 
@@ -68,6 +71,7 @@ class TestParallelCorrectness:
         def slow(issue):
             time.sleep(0.05)
             return _ok()
+
         db = RecordingDB()
         make(8, slow)._classifyRows("acme", "widget", rows, db)
         assert len(db.threads) > 1
@@ -90,6 +94,7 @@ class TestFailureIsolation:
             if issue["number"] % 3 == 0:
                 raise RuntimeError("boom")
             return _ok()
+
         db = RecordingDB()
         tally = make(8, flaky)._classifyRows("acme", "widget", rows, db)
         assert sum(tally.values()) == len(rows)
@@ -98,10 +103,10 @@ class TestFailureIsolation:
     def test_crashed_issues_are_stored_without_a_label(self, rows):
         def always_boom(issue):
             raise RuntimeError("boom")
+
         db = RecordingDB()
         make(8, always_boom)._classifyRows("acme", "widget", rows, db)
-        assert all(status == "api_error" and label is None
-                   for _id, status, label in db.saved)
+        assert all(status == "api_error" and label is None for _id, status, label in db.saved)
 
     def test_mixed_statuses_all_accounted_for(self, rows):
         from tools.helpers.classify import ParsedResult
@@ -113,6 +118,7 @@ class TestFailureIsolation:
             if n == 1:
                 return ParsedResult(status="truncated", error="MAX_TOKENS", raw_text="cut")
             return _ok()
+
         db = RecordingDB()
         tally = make(8, mixed)._classifyRows("acme", "widget", rows, db)
         assert sum(tally.values()) == len(rows)
@@ -133,6 +139,7 @@ class TestRaces:
         class Retryer(Classify):
             def callOllama(self, prompt):
                 import re
+
                 n = int(re.search(r"Issue Number:\*\* #(\d+)", prompt).group(1))
                 with lock:
                     seen[n] += 1
@@ -150,6 +157,7 @@ class TestRaces:
 
     def test_client_is_built_once_under_concurrency(self, rows):
         from tools.helpers.classify import Classify
+
         builds = {"n": 0}
 
         class Counting(Classify):

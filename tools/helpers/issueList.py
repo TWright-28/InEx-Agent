@@ -11,7 +11,7 @@ def parseIssueListCsv(csv_path, column=None):
     """
     entries = []
     unparseable = []
-    with open(csv_path, newline='', encoding='utf-8-sig') as f:
+    with open(csv_path, newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         col = column or reader.fieldnames[0]
         for row in reader:

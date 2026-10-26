@@ -86,9 +86,15 @@ class InExTool:
             FOREIGN KEY (version_id) REFERENCES versions(id)
         )""")
 
-        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_vdeps_version ON version_dependencies(version_id)")
-        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_vdeps_name ON version_dependencies(dep_name)")
-        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_vdeps_kind ON version_dependencies(dep_kind)")
+        self.cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_vdeps_version ON version_dependencies(version_id)"
+        )
+        self.cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_vdeps_name ON version_dependencies(dep_name)"
+        )
+        self.cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_vdeps_kind ON version_dependencies(dep_kind)"
+        )
 
         for alter in [
             "ALTER TABLE projects ADD COLUMN package_name TEXT",
@@ -114,7 +120,10 @@ class InExTool:
 
     def save_project(self, owner, repo):
         cur = self.connection.cursor()
-        cur.execute("INSERT OR IGNORE INTO projects(owner, repo, added_at) VALUES(?,?,?)", (owner, repo, datetime.now().isoformat()))
+        cur.execute(
+            "INSERT OR IGNORE INTO projects(owner, repo, added_at) VALUES(?,?,?)",
+            (owner, repo, datetime.now().isoformat()),
+        )
         self.connection.commit()
         cur.execute("SELECT id FROM projects WHERE owner = ? AND repo = ?", (owner, repo))
         return cur.fetchone()[0]
@@ -133,27 +142,48 @@ class InExTool:
         closed_at = issue_data.get("closed_at")
         updated_at = issue_data.get("updated_at")
         comments_count = issue_data.get("comments_count")
-        raw_data = json.dumps({
-            "timestamp_metrics": issue_data.get("timestamp_metrics"),
-            "participant_metrics": issue_data.get("participant_metrics"),
-            "reopen_metrics": issue_data.get("reopen_metrics"),
-            "author": issue_data.get("author"),
-            "closed_by": issue_data.get("closed_by"),
-            "labels": issue_data.get("labels"),
-            "assignees": issue_data.get("assignees"),
-            "milestone": issue_data.get("milestone"),
-            "comments": issue_data.get("comments"),
-            "comments_md": issue_data.get("comments_md"),
-            "comments_text": issue_data.get("comments_text"),
-            "maintainer_comments": issue_data.get("maintainer_comments"),
-            "closing_pr": issue_data.get("closing_pr"),
-            "closing_commit": issue_data.get("closing_commit"),
-        })
+        raw_data = json.dumps(
+            {
+                "timestamp_metrics": issue_data.get("timestamp_metrics"),
+                "participant_metrics": issue_data.get("participant_metrics"),
+                "reopen_metrics": issue_data.get("reopen_metrics"),
+                "author": issue_data.get("author"),
+                "closed_by": issue_data.get("closed_by"),
+                "labels": issue_data.get("labels"),
+                "assignees": issue_data.get("assignees"),
+                "milestone": issue_data.get("milestone"),
+                "comments": issue_data.get("comments"),
+                "comments_md": issue_data.get("comments_md"),
+                "comments_text": issue_data.get("comments_text"),
+                "maintainer_comments": issue_data.get("maintainer_comments"),
+                "closing_pr": issue_data.get("closing_pr"),
+                "closing_commit": issue_data.get("closing_commit"),
+            }
+        )
         cur.execute(
             "INSERT OR IGNORE INTO issues(project_id, issue_number, github_id, url, title, body, state, state_reason, locked, created_at, closed_at, updated_at, comments_count, raw_data) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (project_id, issue_number, github_id, url, title, body, state, state_reason, locked, created_at, closed_at, updated_at, comments_count, raw_data))
+            (
+                project_id,
+                issue_number,
+                github_id,
+                url,
+                title,
+                body,
+                state,
+                state_reason,
+                locked,
+                created_at,
+                closed_at,
+                updated_at,
+                comments_count,
+                raw_data,
+            ),
+        )
         self.connection.commit()
-        cur.execute("SELECT id FROM issues WHERE project_id = ? AND issue_number = ?", (project_id, issue_number))
+        cur.execute(
+            "SELECT id FROM issues WHERE project_id = ? AND issue_number = ?",
+            (project_id, issue_number),
+        )
         return cur.fetchone()[0]
 
     def save_classification(self, issue_id, classification_data, model, prompt, temp, classifiedat):
@@ -177,12 +207,14 @@ class InExTool:
 
         if status != "ok" and classification is not None:
             raise ValueError(
-                f"refusing to store classification {classification!r} with status {status!r}")
+                f"refusing to store classification {classification!r} with status {status!r}"
+            )
 
         with self._writeLock:
             # Upsert rather than INSERT OR REPLACE: the latter deletes and reinserts,
             # so classifications.id changes on every re-save.
-            cur.execute("""INSERT INTO classifications(
+            cur.execute(
+                """INSERT INTO classifications(
                     issue_id, classification, classification_probabilities,
                     classification_raw_response, model, prompt_version, temperature,
                     classified_at, status, error, validation_flags, argmax_label, attempts)
@@ -197,12 +229,27 @@ class InExTool:
                     validation_flags=excluded.validation_flags,
                     argmax_label=excluded.argmax_label,
                     attempts=excluded.attempts""",
-                (issue_id, classification, probabilites, classification_raw, model, prompt,
-                 temp, classifiedat, status, error, flags, argmax_label, attempts))
+                (
+                    issue_id,
+                    classification,
+                    probabilites,
+                    classification_raw,
+                    model,
+                    prompt,
+                    temp,
+                    classifiedat,
+                    status,
+                    error,
+                    flags,
+                    argmax_label,
+                    attempts,
+                ),
+            )
             self.connection.commit()
             cur.execute(
                 "SELECT id FROM classifications WHERE issue_id=? AND model=? AND prompt_version=? AND temperature=?",
-                (issue_id, model, prompt, temp))
+                (issue_id, model, prompt, temp),
+            )
             return cur.fetchone()[0]
 
     def setPackageName(self, project_id, package_name):
@@ -222,17 +269,22 @@ class InExTool:
 
     def projectHasClassifications(self, project_id):
         cur = self.connection.cursor()
-        cur.execute("SELECT 1 FROM classifications c INNER JOIN issues i ON i.id = c.issue_id "
-                    f"WHERE i.project_id = ? AND {self._SUCCEEDED} LIMIT 1", (project_id,))
+        cur.execute(
+            "SELECT 1 FROM classifications c INNER JOIN issues i ON i.id = c.issue_id "
+            f"WHERE i.project_id = ? AND {self._SUCCEEDED} LIMIT 1",
+            (project_id,),
+        )
         return cur.fetchone() is not None
 
     def getClassificationIssueWindow(self, project_id, start=None, end=None):
         cur = self.connection.cursor()
         # DISTINCT: an issue may carry one row per prompt_version now that
         # prompt_version identifies content, and this returns issues, not rows.
-        q = ("SELECT DISTINCT i.id, i.issue_number, i.created_at, i.version_id FROM issues i "
-             "INNER JOIN classifications c ON c.issue_id = i.id "
-             f"WHERE i.project_id = ? AND {self._SUCCEEDED}")
+        q = (
+            "SELECT DISTINCT i.id, i.issue_number, i.created_at, i.version_id FROM issues i "
+            "INNER JOIN classifications c ON c.issue_id = i.id "
+            f"WHERE i.project_id = ? AND {self._SUCCEEDED}"
+        )
         params = [project_id]
         if start:
             q += " AND i.created_at >= ?"
@@ -246,7 +298,9 @@ class InExTool:
 
     def getVersionByString(self, project_id, version):
         cur = self.connection.cursor()
-        cur.execute("SELECT id FROM versions WHERE project_id = ? AND version = ?", (project_id, version))
+        cur.execute(
+            "SELECT id FROM versions WHERE project_id = ? AND version = ?", (project_id, version)
+        )
         row = cur.fetchone()
         return row[0] if row else None
 
@@ -254,17 +308,30 @@ class InExTool:
         cur = self.connection.cursor()
         cur.execute(
             "INSERT OR IGNORE INTO versions(project_id, package_name, version, published_at, direct_count, peer_count, dev_count, raw_manifest, snapshotted_at) VALUES (?,?,?,?,?,?,?,?,?)",
-            (project_id, package_name, version, published_at,
-             counts.get("direct"), counts.get("peer"), counts.get("dev"),
-             json.dumps(raw_manifest) if raw_manifest else None,
-             datetime.now().isoformat()))
+            (
+                project_id,
+                package_name,
+                version,
+                published_at,
+                counts.get("direct"),
+                counts.get("peer"),
+                counts.get("dev"),
+                json.dumps(raw_manifest) if raw_manifest else None,
+                datetime.now().isoformat(),
+            ),
+        )
         self.connection.commit()
-        cur.execute("SELECT id FROM versions WHERE project_id = ? AND version = ?", (project_id, version))
+        cur.execute(
+            "SELECT id FROM versions WHERE project_id = ? AND version = ?", (project_id, version)
+        )
         return cur.fetchone()[0]
 
     def save_dependencies(self, version_id, rows):
         cur = self.connection.cursor()
-        cur.executemany("INSERT INTO version_dependencies(version_id, dep_name, dep_kind, dep_version_range, resolved_version, depth, root_dep) VALUES (?,?,?,?,?,?,?)", [(version_id, *r) for r in rows])
+        cur.executemany(
+            "INSERT INTO version_dependencies(version_id, dep_name, dep_kind, dep_version_range, resolved_version, depth, root_dep) VALUES (?,?,?,?,?,?,?)",
+            [(version_id, *r) for r in rows],
+        )
         self.connection.commit()
 
     def link_issue_to_version(self, issue_id, version_id):
@@ -281,8 +348,10 @@ class InExTool:
                           AND c.model = ? AND c.prompt_version = ? AND c.temperature = ?
                           AND (c.status IS NULL OR c.status = 'ok')"""
 
-    _ISSUE_COLS = ("i.id, i.issue_number, i.title, i.body, i.state, i.state_reason, "
-                   "i.created_at, i.closed_at, i.raw_data")
+    _ISSUE_COLS = (
+        "i.id, i.issue_number, i.title, i.body, i.state, i.state_reason, "
+        "i.created_at, i.closed_at, i.raw_data"
+    )
 
     def getIssuesByIds(self, issue_ids, model, prompt_version, temperature):
         if not issue_ids:
@@ -295,8 +364,9 @@ class InExTool:
         cur.execute(q, [model, prompt_version, temperature, *issue_ids])
         return cur.fetchall()
 
-    def countUnclassifiedInWindow(self, project_id, model, prompt_version, temperature,
-                                  start=None, end=None):
+    def countUnclassifiedInWindow(
+        self, project_id, model, prompt_version, temperature, start=None, end=None
+    ):
         """Unbounded backlog count, so a preview can report the true total."""
         cur = self.connection.cursor()
         q = f"SELECT COUNT(*) FROM issues i {self._DONE_JOIN} WHERE i.project_id = ? AND c.id IS NULL"
@@ -310,11 +380,22 @@ class InExTool:
         cur.execute(q, params)
         return cur.fetchone()[0]
 
-    def getUnclassifiedInWindow(self, project_id, model, prompt_version, temperature,
-                                start=None, end=None, direction="desc", limit=None):
+    def getUnclassifiedInWindow(
+        self,
+        project_id,
+        model,
+        prompt_version,
+        temperature,
+        start=None,
+        end=None,
+        direction="desc",
+        limit=None,
+    ):
         cur = self.connection.cursor()
-        q = (f"SELECT {self._ISSUE_COLS} FROM issues i {self._DONE_JOIN} "
-             "WHERE i.project_id = ? AND c.id IS NULL")
+        q = (
+            f"SELECT {self._ISSUE_COLS} FROM issues i {self._DONE_JOIN} "
+            "WHERE i.project_id = ? AND c.id IS NULL"
+        )
         params = [model, prompt_version, temperature, project_id]
         if start:
             q += " AND i.created_at >= ?"

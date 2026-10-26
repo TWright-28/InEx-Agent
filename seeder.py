@@ -32,7 +32,7 @@ for filepath in files:
     loaded = 0
     classified = 0
 
-    with open(filepath, encoding='utf-8') as f:
+    with open(filepath, encoding="utf-8") as f:
         for line in f:
             if not line.strip():
                 continue
@@ -66,4 +66,6 @@ for filepath in files:
     total_loaded += loaded
     total_classified += classified
 
-print(f"\nTotal: {total_loaded} issues loaded, {total_classified} classified across {len(files)} files.")
+print(
+    f"\nTotal: {total_loaded} issues loaded, {total_classified} classified across {len(files)} files."
+)

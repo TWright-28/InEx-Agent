@@ -36,6 +36,7 @@ class _Probabilities(BaseModel):
 class ClassificationResult(BaseModel):
     """Field order is load-bearing: Gemini emits properties in schema order, so
     the reasoning fields must precede the probabilities and the final answer."""
+
     definition_check: str
     maintainer_signal: str
     pr_commit_evidence: str
@@ -79,26 +80,28 @@ class ParsedResult:
 
 
 class Classify:
-
     def __init__(self, model, temperature, promptPath, workers=1, retry_attempts=5):
-
         self.workers = max(1, int(workers or 1))
         self.model_config = {
-                "model_name": model,
-                "temperature": temperature,
-                "context_window": 30000,
-            }
+            "model_name": model,
+            "temperature": temperature,
+            "context_window": 30000,
+        }
         self.Labels = ["Intrinsic", "Extrinsic", "Not a Bug", "Unknown"]
         self.LABEL_MAP = {label.lower(): label for label in self.Labels}
         # probability field name on the schema -> canonical label
-        self.PROB_FIELDS = {"intrinsic": "Intrinsic", "extrinsic": "Extrinsic",
-                            "not_a_bug": "Not a Bug", "unknown": "Unknown"}
+        self.PROB_FIELDS = {
+            "intrinsic": "Intrinsic",
+            "extrinsic": "Extrinsic",
+            "not_a_bug": "Not a Bug",
+            "unknown": "Unknown",
+        }
         self.prompt_path = promptPath
         self._llm = None
         self._structured = None
         self._clientLock = threading.Lock()
 
-        with open(promptPath, encoding='utf-8') as f:
+        with open(promptPath, encoding="utf-8") as f:
             self.base_prompt = f.read().strip()
 
         # Identify the prompt by content, not by path: the path is constant across
@@ -131,16 +134,20 @@ class Classify:
         return bool(sep) and provider in self.CLOUD_PROVIDERS
 
     def getAuthorInfo(self, obj):
-        info = obj.get('author', {})
-        username = info.get('username', 'Unknown') if info else 'Unknown'
-        role = info.get('author_association', 'NONE') if info else 'NONE'
+        info = obj.get("author", {})
+        username = info.get("username", "Unknown") if info else "Unknown"
+        role = info.get("author_association", "NONE") if info else "NONE"
         return username, role
 
     def extractLabel(self, text):
         if not text:
             return None
 
-        match = re.search(r"\*\*Final\s*Answer:\*\*\s*(intrinsic|extrinsic|not\s*a\s*bug|unknown)", text, re.IGNORECASE)
+        match = re.search(
+            r"\*\*Final\s*Answer:\*\*\s*(intrinsic|extrinsic|not\s*a\s*bug|unknown)",
+            text,
+            re.IGNORECASE,
+        )
 
         if match:
             raw = match.group(1).lower().strip()
@@ -152,9 +159,11 @@ class Classify:
             return None
         matches = re.findall(r"-\s*([a-zA-Z\s]+):\s*([0-9]*\.?[0-9]+)", text)
 
-        probs = {self.LABEL_MAP[name.lower()]: float(val)
-                for name, val in matches
-                if name.lower() in self.LABEL_MAP}
+        probs = {
+            self.LABEL_MAP[name.lower()]: float(val)
+            for name, val in matches
+            if name.lower() in self.LABEL_MAP
+        }
 
         return probs if probs else None
 
@@ -179,8 +188,15 @@ class Classify:
             return code == 429 or (code is not None and code >= 500)
 
         name = type(exc).__name__
-        if name in ("TimeoutException", "ConnectTimeout", "ReadTimeout", "TransportError",
-                    "ConnectError", "ReadError", "RemoteProtocolError"):
+        if name in (
+            "TimeoutException",
+            "ConnectTimeout",
+            "ReadTimeout",
+            "TransportError",
+            "ConnectError",
+            "ReadError",
+            "RemoteProtocolError",
+        ):
             return True
         # google.genai.errors.ServerError propagates uncaught by langchain.
         if name == "ServerError":
@@ -230,18 +246,20 @@ class Classify:
         with self._clientLock:
             if self._structured is None:
                 from langchain.chat_models import init_chat_model
+
                 self._llm = init_chat_model(
                     self.model_config["model_name"],
                     temperature=self.model_config["temperature"],
-                    max_retries=3,   # 0 would mean "use the SDK default of 5"
-                    timeout=600,     # otherwise httpx runs with timeout=None
+                    max_retries=3,  # 0 would mean "use the SDK default of 5"
+                    timeout=600,  # otherwise httpx runs with timeout=None
                 )
                 # json_schema is the default and the only native mode in 4.2.3;
                 # json_mode is a deprecated alias and function_calling is discouraged.
                 # include_raw keeps the raw response for auditing and turns a parse
                 # failure into a value rather than an exception.
                 self._structured = self._llm.with_structured_output(
-                    ClassificationResult, method="json_schema", include_raw=True)
+                    ClassificationResult, method="json_schema", include_raw=True
+                )
         return self._structured
 
     def callCloud(self, prompt):
@@ -260,19 +278,33 @@ class Classify:
 
         if parsed is None:
             if finish in ("MAX_TOKENS", "SAFETY", "RECITATION", "PROHIBITED_CONTENT"):
-                raise AttemptFailure("truncated" if finish == "MAX_TOKENS" else "api_error",
-                                     f"model stopped early (finish_reason={finish})",
-                                     raw_text=raw_text, retryable=False)
+                raise AttemptFailure(
+                    "truncated" if finish == "MAX_TOKENS" else "api_error",
+                    f"model stopped early (finish_reason={finish})",
+                    raw_text=raw_text,
+                    retryable=False,
+                )
             if not raw_text.strip():
-                raise AttemptFailure("empty_response", "model returned an empty response",
-                                     raw_text=raw_text, retryable=True)
-            raise AttemptFailure("parse_error", f"structured output failed: {parse_error}",
-                                 raw_text=raw_text, retryable=True)
+                raise AttemptFailure(
+                    "empty_response",
+                    "model returned an empty response",
+                    raw_text=raw_text,
+                    retryable=True,
+                )
+            raise AttemptFailure(
+                "parse_error",
+                f"structured output failed: {parse_error}",
+                raw_text=raw_text,
+                retryable=True,
+            )
 
-        probs = {canon: getattr(parsed.probabilities, fieldName)
-                 for fieldName, canon in self.PROB_FIELDS.items()}
-        return ParsedResult(label=parsed.final_answer, probs=probs,
-                            raw_text=raw_text or parsed.model_dump_json())
+        probs = {
+            canon: getattr(parsed.probabilities, fieldName)
+            for fieldName, canon in self.PROB_FIELDS.items()
+        }
+        return ParsedResult(
+            label=parsed.final_answer, probs=probs, raw_text=raw_text or parsed.model_dump_json()
+        )
 
     def callOllama(self, prompt):
         payload = {
@@ -283,7 +315,7 @@ class Classify:
                 "temperature": self.model_config["temperature"],
                 "num_predict": 25000,
                 "num_ctx": self.model_config["context_window"],
-            }
+            },
         }
 
         response = requests.post("http://localhost:11434/api/generate", json=payload, timeout=600)
@@ -291,16 +323,25 @@ class Classify:
         responseText = response.json().get("response", "")
 
         if not (responseText or "").strip():
-            raise AttemptFailure("empty_response", "model returned an empty response",
-                                 raw_text=responseText or "", retryable=True)
+            raise AttemptFailure(
+                "empty_response",
+                "model returned an empty response",
+                raw_text=responseText or "",
+                retryable=True,
+            )
 
         label = self.extractLabel(responseText)
         if label is None:
-            raise AttemptFailure("parse_error", "no parsable '**Final Answer:**' in response",
-                                 raw_text=responseText, retryable=True)
+            raise AttemptFailure(
+                "parse_error",
+                "no parsable '**Final Answer:**' in response",
+                raw_text=responseText,
+                retryable=True,
+            )
 
-        return ParsedResult(label=label, probs=self.extractProbabilities(responseText) or {},
-                            raw_text=responseText)
+        return ParsedResult(
+            label=label, probs=self.extractProbabilities(responseText) or {}, raw_text=responseText
+        )
 
     # ---------------- validation ----------------
 
@@ -325,8 +366,11 @@ class Classify:
             result.label = None
             return result
 
-        bad = {k: v for k, v in probs.items()
-               if not isinstance(v, int | float) or not 0.0 <= float(v) <= 1.0}
+        bad = {
+            k: v
+            for k, v in probs.items()
+            if not isinstance(v, int | float) or not 0.0 <= float(v) <= 1.0
+        }
         if bad:
             result.status, result.error = "invalid_result", f"probabilities out of range: {bad}"
             result.label = None
@@ -350,71 +394,79 @@ class Classify:
 
     def formatComment(self, i, comment, maxLen, alwaysShowRole):
         commentUser, commentRole = self.getAuthorInfo(comment)
-        commentBody = comment.get('body') or ''
-        commentDate = comment.get('created_at', '')
+        commentBody = comment.get("body") or ""
+        commentDate = comment.get("created_at", "")
 
         if len(commentBody) > maxLen:
             commentBody = commentBody[:maxLen] + "\n[...truncated...]"
 
-        roleIndicator = f' [{commentRole}]' if (alwaysShowRole or commentRole == 'CONTRIBUTOR') else ''
+        roleIndicator = (
+            f" [{commentRole}]" if (alwaysShowRole or commentRole == "CONTRIBUTOR") else ""
+        )
         return f"**Comment {i}** by {commentUser}{roleIndicator} ({commentDate}):\n{commentBody}"
 
     def formatIssueData(self, issue):
         project = f"{issue['owner']}/{issue['repo']}"
         # `or` rather than a get() default: the key often exists with value None.
-        title = issue.get('title') or 'No title'
-        body = issue.get('body') or 'No description provided'
+        title = issue.get("title") or "No title"
+        body = issue.get("body") or "No description provided"
 
         authorName, authorRole = self.getAuthorInfo(issue)
 
-        labels = issue.get('labels', [])
+        labels = issue.get("labels", [])
         if labels:
-            labelNames = [label.get('name', '') for label in labels if label.get('name')]
-            labelsStr = ', '.join(labelNames) if labelNames else 'None'
+            labelNames = [label.get("name", "") for label in labels if label.get("name")]
+            labelsStr = ", ".join(labelNames) if labelNames else "None"
         else:
-            labelsStr = 'None'
+            labelsStr = "None"
 
-        createdAt = issue.get('created_at', 'Unknown')
-        closedAt = issue.get('closed_at', 'Not closed')
-        stateReason = issue.get('state_reason') or 'Not specified'
+        createdAt = issue.get("created_at", "Unknown")
+        closedAt = issue.get("closed_at", "Not closed")
+        stateReason = issue.get("state_reason") or "Not specified"
 
-        closedByInfo = issue.get('closed_by', {})
-        closedBy = closedByInfo.get('username', 'Unknown') if closedByInfo else 'Unknown'
+        closedByInfo = issue.get("closed_by", {})
+        closedBy = closedByInfo.get("username", "Unknown") if closedByInfo else "Unknown"
 
-        closingPr = issue.get('closing_pr')
-        closingCommit = issue.get('closing_commit')
+        closingPr = issue.get("closing_pr")
+        closingCommit = issue.get("closing_commit")
 
         # State absence explicitly: the guide leans heavily on PR evidence, and an
         # empty string left the model unable to tell "no PR" from "data missing".
         if closingPr:
-            prTitle = closingPr.get('title', 'No title')
-            prBody = closingPr.get('body', '')
-            prFiles = closingPr.get('changed_files', 0)
-            prMerged = closingPr.get('merged', False)
+            prTitle = closingPr.get("title", "No title")
+            prBody = closingPr.get("body", "")
+            prFiles = closingPr.get("changed_files", 0)
+            prMerged = closingPr.get("merged", False)
 
             prDetails = f"""
 **Closing PR Details:**
 - Title: {prTitle}
 - Merged: {prMerged}
 - Files Changed: {prFiles}
-- Body: {prBody[:15000] if prBody else 'No description'}{'...' if prBody and len(prBody) > 15000 else ''}
+- Body: {prBody[:15000] if prBody else "No description"}{"..." if prBody and len(prBody) > 15000 else ""}
 """
         else:
             prDetails = "\n**Closing PR:** None found\n"
 
         if closingCommit:
-            commitMsg = closingCommit if isinstance(closingCommit, str) else closingCommit.get('message', 'No message')
-            commitDetails = f"\n**Closing Commit:** {commitMsg[:2000]}{'...' if len(commitMsg) > 2000 else ''}"
+            commitMsg = (
+                closingCommit
+                if isinstance(closingCommit, str)
+                else closingCommit.get("message", "No message")
+            )
+            commitDetails = (
+                f"\n**Closing Commit:** {commitMsg[:2000]}{'...' if len(commitMsg) > 2000 else ''}"
+            )
         else:
             commitDetails = "\n**Closing Commit:** None found"
 
-        commentsList = issue.get('comments', [])
+        commentsList = issue.get("comments", [])
         maintainerComments = []
         regularComments = []
 
         for comment in commentsList:
             _, commentRole = self.getAuthorInfo(comment)
-            if commentRole in ['OWNER', 'MEMBER', 'COLLABORATOR', 'CONTRIBUTOR']:
+            if commentRole in ["OWNER", "MEMBER", "COLLABORATOR", "CONTRIBUTOR"]:
                 maintainerComments.append(comment)
             else:
                 regularComments.append(comment)
@@ -429,9 +481,11 @@ class Classify:
 
         totalShown = len(maintainerComments) + min(50, len(regularComments))
         if len(commentsList) > totalShown:
-            formattedComments.append(f"\n[...{len(commentsList) - totalShown} more comments omitted...]")
+            formattedComments.append(
+                f"\n[...{len(commentsList) - totalShown} more comments omitted...]"
+            )
 
-        commentsStr = '\n\n'.join(formattedComments) if formattedComments else 'No comments'
+        commentsStr = "\n\n".join(formattedComments) if formattedComments else "No comments"
 
         if len(body) > 80000:
             body = body[:80000] + "\n\n[..truncated for length..]"
@@ -440,7 +494,7 @@ class Classify:
 ## Issue Data to Classify
 
 **Project:** {project}
-**Issue Number:** #{issue.get('number', 'Unknown')}
+**Issue Number:** #{issue.get("number", "Unknown")}
 **Title:** {title}
 **Author:** {authorName} (Role: {authorRole})
 **Labels:** {labelsStr}
@@ -502,7 +556,9 @@ DO NOT REPEAT RAW FILE PATHS OR FULL STACK TRACE OUTPUTS.
         return result
 
     def _prepareIssue(self, owner, repo, row):
-        issue_id, number, title, body, state, state_reason, created_at, closed_at, raw_data_str = row
+        issue_id, number, title, body, state, state_reason, created_at, closed_at, raw_data_str = (
+            row
+        )
         raw_data = json.loads(raw_data_str) if raw_data_str else {}
 
         # raw_data first: splatting it last let it silently override title/body/state.
@@ -530,8 +586,11 @@ DO NOT REPEAT RAW FILE PATHS OR FULL STACK TRACE OUTPUTS.
             result = self.classifyOne(issue)
         except Exception as e:  # never a bare except: KeyboardInterrupt must pass through
             logger.exception("Classification failed for #%s", number)
-            result = ParsedResult(status="api_error", error=f"{type(e).__name__}: {e}",
-                                  attempts=getattr(e, "classify_attempts", 1))
+            result = ParsedResult(
+                status="api_error",
+                error=f"{type(e).__name__}: {e}",
+                attempts=getattr(e, "classify_attempts", 1),
+            )
 
         if not result.ok:
             logger.warning("Issue #%s recorded as %s: %s", number, result.status, result.error)
@@ -539,21 +598,22 @@ DO NOT REPEAT RAW FILE PATHS OR FULL STACK TRACE OUTPUTS.
             logger.info("Issue #%s flagged %s", number, result.flags)
 
         try:
-            db.save_classification(issue_id,
-            {
-                "classification": result.label,
-                "classification_probabilities": result.probs,
-                "classification_raw_response": result.raw_text,
-                "status": result.status,
-                "error": result.error,
-                "validation_flags": result.flags,
-                "argmax_label": result.argmax_label,
-                "attempts": result.attempts,
-            },
-                model = self.model_config["model_name"],
-                prompt= self.prompt_version,
-                temp =self.model_config["temperature"],
-                classifiedat= datetime.now().isoformat(),
+            db.save_classification(
+                issue_id,
+                {
+                    "classification": result.label,
+                    "classification_probabilities": result.probs,
+                    "classification_raw_response": result.raw_text,
+                    "status": result.status,
+                    "error": result.error,
+                    "validation_flags": result.flags,
+                    "argmax_label": result.argmax_label,
+                    "attempts": result.attempts,
+                },
+                model=self.model_config["model_name"],
+                prompt=self.prompt_version,
+                temp=self.model_config["temperature"],
+                classifiedat=datetime.now().isoformat(),
             )
         except Exception:
             # The row is lost but the run continues; it stays unclassified and is
@@ -598,16 +658,17 @@ DO NOT REPEAT RAW FILE PATHS OR FULL STACK TRACE OUTPUTS.
         msg = f"Classified {ok} issues from {owner}/{repo}."
         if failed:
             breakdown = ", ".join(f"{s}={n}" for s, n in sorted(tally.items()) if s != "ok")
-            msg += (f" {failed} failed and were NOT labelled ({breakdown});"
-                    " re-run to retry them.")
+            msg += f" {failed} failed and were NOT labelled ({breakdown}); re-run to retry them."
         return msg
 
     def _runKey(self):
-        return (self.model_config["model_name"], self.prompt_version,
-                self.model_config["temperature"])
+        return (
+            self.model_config["model_name"],
+            self.prompt_version,
+            self.model_config["temperature"],
+        )
 
-    def classifyAll(self, owner, repo, db, max_issues = None, start = None, end = None, direction = "desc"):
-
+    def classifyAll(self, owner, repo, db, max_issues=None, start=None, end=None, direction="desc"):
         logger.info("Starting classification for %s/%s", owner, repo)
 
         db.cursor.execute("SELECT id from projects where owner = ? and repo = ?", (owner, repo))
@@ -617,8 +678,9 @@ DO NOT REPEAT RAW FILE PATHS OR FULL STACK TRACE OUTPUTS.
         projectId = row[0]
 
         model, promptVersion, temp = self._runKey()
-        unclassified = db.getUnclassifiedInWindow(projectId, model, promptVersion, temp,
-                                                  start, end, direction, max_issues)
+        unclassified = db.getUnclassifiedInWindow(
+            projectId, model, promptVersion, temp, start, end, direction, max_issues
+        )
         if not unclassified:
             return f"No unclassified issues found for {owner}/{repo} in the given window."
 
@@ -628,7 +690,9 @@ DO NOT REPEAT RAW FILE PATHS OR FULL STACK TRACE OUTPUTS.
         return self._summarise(owner, repo, tally)
 
     def classifyByIds(self, owner, repo, issue_ids, db):
-        logger.info("Starting classification of %d specific issues for %s/%s", len(issue_ids), owner, repo)
+        logger.info(
+            "Starting classification of %d specific issues for %s/%s", len(issue_ids), owner, repo
+        )
 
         rows = db.getIssuesByIds(issue_ids, *self._runKey())
         if not rows:
@@ -639,7 +703,9 @@ DO NOT REPEAT RAW FILE PATHS OR FULL STACK TRACE OUTPUTS.
         logger.info("Finished classification for %s/%s: %s", owner, repo, tally)
         return self._summarise(owner, repo, tally)
 
-    def previewClassification(self, owner, repo, db, max_count=None, start=None, end=None, direction="desc"):
+    def previewClassification(
+        self, owner, repo, db, max_count=None, start=None, end=None, direction="desc"
+    ):
         db.cursor.execute("SELECT id FROM projects WHERE owner=? AND repo=?", (owner, repo))
         row = db.cursor.fetchone()
 
@@ -649,20 +715,29 @@ DO NOT REPEAT RAW FILE PATHS OR FULL STACK TRACE OUTPUTS.
         project_id = row[0]
         model, promptVersion, temp = self._runKey()
         # would_classify is capped by max_count; total_remaining is the real backlog.
-        total_remaining = db.countUnclassifiedInWindow(project_id, model, promptVersion, temp, start, end)
-        rows = db.getUnclassifiedInWindow(project_id, model, promptVersion, temp,
-                                          start, end, direction, max_count)
+        total_remaining = db.countUnclassifiedInWindow(
+            project_id, model, promptVersion, temp, start, end
+        )
+        rows = db.getUnclassifiedInWindow(
+            project_id, model, promptVersion, temp, start, end, direction, max_count
+        )
         if not rows:
-            return {"status": "ok", "would_classify": 0, "owner": owner, "repo": repo,
-                    "total_remaining": total_remaining, "model": model,
-                    "prompt_version": promptVersion}
+            return {
+                "status": "ok",
+                "would_classify": 0,
+                "owner": owner,
+                "repo": repo,
+                "total_remaining": total_remaining,
+                "model": model,
+                "prompt_version": promptVersion,
+            }
 
         dates = [r[6] for r in rows if r[6]]
-        sample = [{"issue_number": r[1], "title": (r[2] or "")[:80]}
-                for r in rows[:5]]
+        sample = [{"issue_number": r[1], "title": (r[2] or "")[:80]} for r in rows[:5]]
         return {
             "status": "ok",
-            "owner": owner, "repo": repo,
+            "owner": owner,
+            "repo": repo,
             "would_classify": len(rows),
             "total_remaining": total_remaining,
             "model": model,

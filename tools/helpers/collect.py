@@ -6,31 +6,31 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-class Collect: 
-    def __init__(self, token):
 
-        self.headers = {
-            "Authorization": f"Bearer {token}",
-            "Accept": "application/vnd.github+json"
-        }
-    
+class Collect:
+    def __init__(self, token):
+        self.headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
+
     def countIssues(self, owner, repo):
         # GraphQL rather than the search API: search answers 422 for some public
         # repos (facebook/react among them). Returns None if the repo does not exist.
         query = "query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { issues { totalCount } } }"
-        r = requests.post("https://api.github.com/graphql", headers=self.headers,
-                          json={"query": query, "variables": {"owner": owner, "name": repo}}, timeout=30)
+        r = requests.post(
+            "https://api.github.com/graphql",
+            headers=self.headers,
+            json={"query": query, "variables": {"owner": owner, "name": repo}},
+            timeout=30,
+        )
         r.raise_for_status()
         repository = (r.json().get("data") or {}).get("repository")
         return repository["issues"]["totalCount"] if repository else None
-     
-        
+
     def parseTs(self, s):
         if not s:
             return None
         return datetime.fromisoformat(s.replace("Z", "+00:00"))
 
-    def get(self, url, hdrs= None):
+    def get(self, url, hdrs=None):
         if hdrs is None:
             hdrs = self.headers
         while True:
@@ -69,7 +69,9 @@ class Collect:
                 return None
             raise
         try:
-            revs = self.fetchPaginated(f"https://api.github.com/repos/{owner}/{repo}/pulls/{prNum}/reviews")
+            revs = self.fetchPaginated(
+                f"https://api.github.com/repos/{owner}/{repo}/pulls/{prNum}/reviews"
+            )
         except Exception:
             revs = []
 
@@ -105,7 +107,9 @@ class Collect:
             "merged_by": {
                 "username": mergedBy.get("login"),
                 "id": mergedBy.get("id"),
-            } if mergedBy else None,
+            }
+            if mergedBy
+            else None,
             "commits": pr.get("commits"),
             "additions": pr.get("additions"),
             "deletions": pr.get("deletions"),
@@ -122,7 +126,7 @@ class Collect:
             "head_ref": pr.get("head", {}).get("ref"),
             "base_ref": pr.get("base", {}).get("ref"),
             "head_sha": pr.get("head", {}).get("sha"),
-            "merge_commit_sha": pr.get("merge_commit_sha")
+            "merge_commit_sha": pr.get("merge_commit_sha"),
         }
 
     def fetchCommitDetails(self, owner, repo, sha):
@@ -139,12 +143,16 @@ class Collect:
             "committer": {"date": comm.get("date")},
             "github_author": {
                 "username": c.get("author", {}).get("login"),
-                "id": c.get("author", {}).get("id")
-            } if c.get("author") else None,
+                "id": c.get("author", {}).get("id"),
+            }
+            if c.get("author")
+            else None,
             "github_committer": {
                 "username": c.get("committer", {}).get("login"),
-                "id": c.get("committer", {}).get("id")
-            } if c.get("committer") else None,
+                "id": c.get("committer", {}).get("id"),
+            }
+            if c.get("committer")
+            else None,
             "additions": stats.get("additions"),
             "deletions": stats.get("deletions"),
             "total_changes": stats.get("total"),
@@ -155,14 +163,18 @@ class Collect:
                     "status": f.get("status"),
                     "additions": f.get("additions"),
                     "deletions": f.get("deletions"),
-                    "changes": f.get("changes")
+                    "changes": f.get("changes"),
                 }
                 for f in c.get("files", [])[:20]
-            ]
+            ],
         }
 
     def calcTimestamps(self, createdAt, closedAt, comments):
-        m = {"time_to_close_seconds": None, "time_to_first_response_seconds": None, "time_open_seconds": None}
+        m = {
+            "time_to_close_seconds": None,
+            "time_to_first_response_seconds": None,
+            "time_open_seconds": None,
+        }
 
         if createdAt and closedAt:
             m["time_to_close_seconds"] = int((closedAt - createdAt).total_seconds())
@@ -203,7 +215,7 @@ class Collect:
         return {
             "unique_participants": len(parts),
             "unique_maintainers": len(maints),
-            "maintainer_involved": len(maints) > 0
+            "maintainer_involved": len(maints) > 0,
         }
 
     def calcReopenMetrics(self, state, createdAt, closedAt, events):
@@ -212,7 +224,7 @@ class Collect:
             "reopen_count": 0,
             "time_to_reopen_seconds": None,
             "final_resolution_time_seconds": None,
-            "reopen_timestamps": []
+            "reopen_timestamps": [],
         }
 
         closedEvts = [e for e in events if e.get("event") == "closed"]
@@ -295,9 +307,18 @@ class Collect:
             commitId = ref.get("commit_id")
             if commitId:
                 try:
-                    prs = self.fetch(f"https://api.github.com/repos/{owner}/{repo}/commits/{commitId}/pulls")
+                    prs = self.fetch(
+                        f"https://api.github.com/repos/{owner}/{repo}/commits/{commitId}/pulls"
+                    )
                     if prs:
-                        prM = self.tryPr(owner, repo, prs[0].get("number"), issueCreatedTime, issueClosedTime, 604800)
+                        prM = self.tryPr(
+                            owner,
+                            repo,
+                            prs[0].get("number"),
+                            issueCreatedTime,
+                            issueClosedTime,
+                            604800,
+                        )
                         if prM:
                             return prM, None
                 except Exception:
@@ -307,15 +328,19 @@ class Collect:
         commitUrl = closedEvt.get("commit_url")
 
         if not commitSha and commitUrl:
-            parts = commitUrl.rstrip('/').split('/')
+            parts = commitUrl.rstrip("/").split("/")
             if len(parts) > 0:
                 commitSha = parts[-1]
 
         if commitSha:
             try:
-                prs = self.fetch(f"https://api.github.com/repos/{owner}/{repo}/commits/{commitSha}/pulls")
+                prs = self.fetch(
+                    f"https://api.github.com/repos/{owner}/{repo}/commits/{commitSha}/pulls"
+                )
                 if prs:
-                    prM = self.tryPr(owner, repo, prs[0].get("number"), issueCreatedTime, issueClosedTime, 604800)
+                    prM = self.tryPr(
+                        owner, repo, prs[0].get("number"), issueCreatedTime, issueClosedTime, 604800
+                    )
                     if prM:
                         return prM, None
                 else:
@@ -351,10 +376,12 @@ class Collect:
         if issue.get("pull_request"):
             return None
 
-        rawComments = self.fetchPaginated(f"https://api.github.com/repos/{owner}/{repo}/issues/{num}/comments")
+        rawComments = self.fetchPaginated(
+            f"https://api.github.com/repos/{owner}/{repo}/issues/{num}/comments"
+        )
         timeline = self.fetchPaginated(
             f"https://api.github.com/repos/{owner}/{repo}/issues/{num}/timeline",
-            {"Accept": "application/vnd.github.mockingbird-preview+json"}
+            {"Accept": "application/vnd.github.mockingbird-preview+json"},
         )
 
         commentsData = []
@@ -368,9 +395,9 @@ class Collect:
                 "author": {
                     "username": c.get("user", {}).get("login"),
                     "id": c.get("user", {}).get("id"),
-                    "author_association": c.get("author_association")
+                    "author_association": c.get("author_association"),
                 },
-                "body": c.get("body")
+                "body": c.get("body"),
             }
             commentsData.append(obj)
             assoc = c.get("author_association", "")
@@ -389,16 +416,36 @@ class Collect:
         closingCommit = None
 
         if issue.get("state") == "closed":
-            closingPr, closingCommit = self.findClosingMethod(owner, repo, num, issue.get("created_at"), issue.get("closed_at"),timeline)
+            closingPr, closingCommit = self.findClosingMethod(
+                owner, repo, num, issue.get("created_at"), issue.get("closed_at"), timeline
+            )
 
         commentsMd = self.buildComments(commentsData)
         commentsText = self.buildComments(commentsData, format_ts=True)
 
-        labels = [{"name": label.get("name"), "description": label.get("description"), "color": label.get("color")} for label in issue.get("labels", [])]
-        assignees = [{"username": u.get("login"), "id": u.get("id")} for u in issue.get("assignees", [])]
+        labels = [
+            {
+                "name": label.get("name"),
+                "description": label.get("description"),
+                "color": label.get("color"),
+            }
+            for label in issue.get("labels", [])
+        ]
+        assignees = [
+            {"username": u.get("login"), "id": u.get("id")} for u in issue.get("assignees", [])
+        ]
 
         ms = issue.get("milestone")
-        milestone = {"number": ms.get("number"), "title": ms.get("title"), "state": ms.get("state"), "due_on": ms.get("due_on")} if ms else None
+        milestone = (
+            {
+                "number": ms.get("number"),
+                "title": ms.get("title"),
+                "state": ms.get("state"),
+                "due_on": ms.get("due_on"),
+            }
+            if ms
+            else None
+        )
 
         closedBy = issue.get("closed_by")
 
@@ -422,9 +469,11 @@ class Collect:
             "author": {
                 "username": issue.get("user", {}).get("login"),
                 "id": issue.get("user", {}).get("id"),
-                "author_association": issue.get("author_association")
+                "author_association": issue.get("author_association"),
             },
-            "closed_by": {"username": closedBy.get("login"), "id": closedBy.get("id")} if closedBy else None,
+            "closed_by": {"username": closedBy.get("login"), "id": closedBy.get("id")}
+            if closedBy
+            else None,
             "labels": labels,
             "assignees": assignees,
             "milestone": milestone,
@@ -444,7 +493,9 @@ class Collect:
         issueIds = []
 
         for num in numbers:
-            db.cursor.execute("SELECT id FROM issues WHERE project_id = ? AND issue_number = ?", (projectId, num))
+            db.cursor.execute(
+                "SELECT id FROM issues WHERE project_id = ? AND issue_number = ?", (projectId, num)
+            )
             row = db.cursor.fetchone()
             if row:
                 issueIds.append(row[0])
@@ -469,11 +520,19 @@ class Collect:
             if collected % 10 == 0:
                 logger.info("  Collected %d/%d for %s/%s", collected, len(numbers), owner, repo)
 
-        logger.info("Finished specific collection for %s/%s: %d collected, %d skipped, %d failed",
-                     owner, repo, collected, skipped, failed)
+        logger.info(
+            "Finished specific collection for %s/%s: %d collected, %d skipped, %d failed",
+            owner,
+            repo,
+            collected,
+            skipped,
+            failed,
+        )
         return projectId, issueIds, collected, skipped, failed
 
-    def collectAll(self, owner, repo, db, max_issues=None, start_date=None, end_date=None, direction="desc"):
+    def collectAll(
+        self, owner, repo, db, max_issues=None, start_date=None, end_date=None, direction="desc"
+    ):
         logger.info("Starting collection for %s/%s", owner, repo)
         projectId = db.save_project(owner, repo)
         collected = 0
@@ -481,8 +540,8 @@ class Collect:
         pg = 1
 
         if direction not in ("desc", "asc"):
-                direction = "desc"
-        
+            direction = "desc"
+
         while True:
             issuesUrl = f"https://api.github.com/repos/{owner}/{repo}/issues?state=all&sort=created&direction={direction}"
             issues = self.get(f"{issuesUrl}&per_page=100&page={pg}").json()
@@ -490,25 +549,27 @@ class Collect:
             for issue in issues:
                 if issue.get("pull_request"):
                     continue
-                
+
                 created = issue.get("created_at")
-                
+
                 if direction == "desc":
                     if end_date and created and created > end_date:
-                        continue 
+                        continue
                     if start_date and created and created < start_date:
                         logger.info("Reached start_date boundary, stopping.")
                         return self._finish(owner, repo, collected, skipped)
                 else:
-
                     if start_date and created and created < start_date:
-                        continue 
+                        continue
                     if end_date and created and created > end_date:
                         logger.info("Reached end_date boundary, stopping.")
                         return self._finish(owner, repo, collected, skipped)
 
                 num = issue.get("number")
-                db.cursor.execute("SELECT id FROM issues WHERE project_id = ? AND issue_number = ?", (projectId, num))
+                db.cursor.execute(
+                    "SELECT id FROM issues WHERE project_id = ? AND issue_number = ?",
+                    (projectId, num),
+                )
                 if db.cursor.fetchone():
                     skipped += 1
                     continue
@@ -521,7 +582,7 @@ class Collect:
                 collected += 1
 
                 if collected % 10 == 0:
-                    logger.info("  Collected %d issues (skipped %d)",collected, skipped)
+                    logger.info("  Collected %d issues (skipped %d)", collected, skipped)
 
                 if max_issues and collected >= max_issues:
                     logger.info("Reached max_issues cap.")
@@ -532,8 +593,15 @@ class Collect:
             pg += 1
 
         return self._finish(owner, repo, collected, skipped)
-    
+
     def _finish(self, owner, repo, collected, skipped):
-        logger.info("Finished collection for %s/%s: %d collected, %d skipped",
-                    owner, repo, collected, skipped)
-        return f"Collected {collected} issues from {owner}/{repo} (skipped {skipped} already in DB)."
+        logger.info(
+            "Finished collection for %s/%s: %d collected, %d skipped",
+            owner,
+            repo,
+            collected,
+            skipped,
+        )
+        return (
+            f"Collected {collected} issues from {owner}/{repo} (skipped {skipped} already in DB)."
+        )

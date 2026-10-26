@@ -52,7 +52,6 @@ def _clean(v):
 
 
 class DependencySnapshotter:
-
     def __init__(self):
         self.session = requests.Session()
 
@@ -135,7 +134,9 @@ class DependencySnapshotter:
         logger.warning("Unrecognized version_range %r; ignoring filter", version_range)
         return versions
 
-    def _select_versions(self, versions_desc, time_map, last_n_versions=None, version_start=None, version_end=None):
+    def _select_versions(
+        self, versions_desc, time_map, last_n_versions=None, version_start=None, version_end=None
+    ):
         selected = set()
 
         if last_n_versions:
@@ -161,14 +162,19 @@ class DependencySnapshotter:
         return selected
 
     def _snapshot_version(self, db, project_id, package_name, version, published_at, versions_map):
-
         manifest = versions_map.get(version, {})
         direct = manifest.get("dependencies") or {}
         peer = manifest.get("peerDependencies") or {}
         dev = manifest.get("devDependencies") or {}
 
-        logger.info("  Snapshotting %s@%s (direct=%d, peer=%d, dev=%d)",
-                    package_name, version, len(direct), len(peer), len(dev))
+        logger.info(
+            "  Snapshotting %s@%s (direct=%d, peer=%d, dev=%d)",
+            package_name,
+            version,
+            len(direct),
+            len(peer),
+            len(dev),
+        )
 
         counts = {
             "direct": len(direct),
@@ -181,7 +187,9 @@ class DependencySnapshotter:
             "devDependencies": dev,
         }
 
-        version_id = db.saveVersion(project_id, package_name, version, published_at, counts, raw_manifest)
+        version_id = db.saveVersion(
+            project_id, package_name, version, published_at, counts, raw_manifest
+        )
 
         rows = []
         for name, rng in direct.items():
@@ -193,8 +201,19 @@ class DependencySnapshotter:
         db.save_dependencies(version_id, rows)
         return version_id
 
-    def snapshot_for_classified(self, owner, repo, db, npm_package,start=None, end=None, version_range=None,last_n_versions=None,version_start=None, version_end=None) -> dict:
-
+    def snapshot_for_classified(
+        self,
+        owner,
+        repo,
+        db,
+        npm_package,
+        start=None,
+        end=None,
+        version_range=None,
+        last_n_versions=None,
+        version_start=None,
+        version_end=None,
+    ) -> dict:
         start = _clean(start)
         end = _clean(end)
         version_range = _clean(version_range)
@@ -205,23 +224,19 @@ class DependencySnapshotter:
         cur.execute("SELECT id FROM projects WHERE owner = ? AND repo = ?", (owner, repo))
         row = cur.fetchone()
         if not row:
-            return {"status": "error", "code": "project_not_found",
-                    "owner": owner, "repo": repo}
+            return {"status": "error", "code": "project_not_found", "owner": owner, "repo": repo}
         project_id = row[0]
 
         if not db.projectHasClassifications(project_id):
-            return {"status": "error", "code": "no_classifications",
-                    "owner": owner, "repo": repo}
+            return {"status": "error", "code": "no_classifications", "owner": owner, "repo": repo}
 
         package_name = self.resolve_package_name(db, project_id, npm_package)
         if not package_name:
-            return {"status": "error", "code": "npm_package_not_found",
-                    "attempted": npm_package}
+            return {"status": "error", "code": "npm_package_not_found", "attempted": npm_package}
 
         doc = fetchFull(package_name, DOC_CACHE_DIR, self.session)
         if not doc:
-            return {"status": "error", "code": "npm_doc_fetch_failed",
-                    "package_name": package_name}
+            return {"status": "error", "code": "npm_doc_fetch_failed", "package_name": package_name}
 
         versions_map = doc.get("versions", {})
         time_map = doc.get("time", {})
@@ -230,16 +245,30 @@ class DependencySnapshotter:
         if version_range:
             all_versions = self._filter_versions_by_range(all_versions, version_range)
             if not all_versions:
-                return {"status": "error", "code": "no_versions_match_range","package_name": package_name, "version_range": version_range}
+                return {
+                    "status": "error",
+                    "code": "no_versions_match_range",
+                    "package_name": package_name,
+                    "version_range": version_range,
+                }
 
         versions_desc = sortVersionsDesc(all_versions)
         versions_with_times = [(v, time_map.get(v)) for v in versions_desc]
 
         issues = db.getClassificationIssueWindow(project_id, start, end)
         if not issues:
-            return {"status": "error", "code": "no_classified_issues", "owner": owner, "repo": repo, "start": start, "end": end}
+            return {
+                "status": "error",
+                "code": "no_classified_issues",
+                "owner": owner,
+                "repo": repo,
+                "start": start,
+                "end": end,
+            }
 
-        slice_versions = self._select_versions(versions_desc, time_map, last_n_versions, version_start, version_end)
+        slice_versions = self._select_versions(
+            versions_desc, time_map, last_n_versions, version_start, version_end
+        )
 
         snapshotted = 0
         linked = 0
@@ -251,8 +280,7 @@ class DependencySnapshotter:
             vid = db.getVersionByString(project_id, version)
             if vid is None:
                 vid = self._snapshot_version(
-                    db, project_id, package_name, version, published_at,
-                    versions_map
+                    db, project_id, package_name, version, published_at, versions_map
                 )
                 snapshotted += 1
             return vid
@@ -264,8 +292,9 @@ class DependencySnapshotter:
             picked = self._live_version_at(created_at, versions_with_times)
             if not picked:
                 unlinkable_pre_release += 1
-                logger.info("  Issue #%s created %s predates first release",
-                            issue_number, created_at)
+                logger.info(
+                    "  Issue #%s created %s predates first release", issue_number, created_at
+                )
                 continue
             version, published_at = picked
             version_id = ensure_version(version, published_at)
@@ -276,8 +305,7 @@ class DependencySnapshotter:
         for version in slice_versions:
             if db.getVersionByString(project_id, version) is None:
                 self._snapshot_version(
-                    db, project_id, package_name, version,
-                    time_map.get(version), versions_map
+                    db, project_id, package_name, version, time_map.get(version), versions_map
                 )
                 extra += 1
 
@@ -300,4 +328,3 @@ class DependencySnapshotter:
                 "version_end": version_end,
             },
         }
-

@@ -5,6 +5,7 @@ Usage:
     python import_list.py issues.csv --no-classify
     python import_list.py issues.csv --db db/icsme_issues.db --column resolved_issues
 """
+
 import json
 import os
 import sys
@@ -17,14 +18,14 @@ db_path = "db/icsme_issues.db"
 if "--db" in args:
     i = args.index("--db")
     db_path = args[i + 1]
-    del args[i:i + 2]
+    del args[i : i + 2]
 os.environ["DATABASE_URL"] = db_path
 
 column = None
 if "--column" in args:
     i = args.index("--column")
     column = args[i + 1]
-    del args[i:i + 2]
+    del args[i : i + 2]
 
 classify = "--no-classify" not in args
 args = [a for a in args if a != "--no-classify"]

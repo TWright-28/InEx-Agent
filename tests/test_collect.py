@@ -3,6 +3,7 @@
 The fake honours the list endpoint's `direction` and `page` parameters the way
 GitHub does, so these tests catch a request that asks for the wrong order.
 """
+
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -39,16 +40,29 @@ def fake_issue_list(url, hdrs=None):
         return FakeResponse([])
     reverse = params["direction"][0] == "desc"
     ordered = sorted(CREATED.items(), key=lambda kv: kv[1], reverse=reverse)
-    return FakeResponse([
-        {"number": n, "title": f"issue {n}", "state": "closed", "created_at": ts,
-         "html_url": f"https://github.com/acme/widget/issues/{n}"}
-        for n, ts in ordered
-    ])
+    return FakeResponse(
+        [
+            {
+                "number": n,
+                "title": f"issue {n}",
+                "state": "closed",
+                "created_at": ts,
+                "html_url": f"https://github.com/acme/widget/issues/{n}",
+            }
+            for n, ts in ordered
+        ]
+    )
 
 
 def fake_collect_issue(owner, repo, num):
-    return {"number": num, "title": f"issue {num}", "body": "body", "state": "closed",
-            "state_reason": "completed", "created_at": CREATED[num]}
+    return {
+        "number": num,
+        "title": f"issue {num}",
+        "body": "body",
+        "state": "closed",
+        "state_reason": "completed",
+        "created_at": CREATED[num],
+    }
 
 
 @pytest.fixture
@@ -74,7 +88,9 @@ class TestCollectDirection:
         assert saved_in_order(db) == [1, 2]
 
     def test_descending_stops_at_start_date(self, collector, db):
-        collector.collectAll("acme", "widget", db, start_date="2020-03-01T00:00:00Z", direction="desc")
+        collector.collectAll(
+            "acme", "widget", db, start_date="2020-03-01T00:00:00Z", direction="desc"
+        )
         assert saved_in_order(db) == [5, 4, 3]
 
 
@@ -90,14 +106,17 @@ class TestCountIssues:
             def post(url, headers=None, json=None, timeout=None):
                 sent.append({"url": url, "json": json})
                 return FakeResponse(payload)
+
             monkeypatch.setattr("tools.helpers.collect.requests.post", post)
             return sent
+
         return install
 
     @pytest.fixture
     def search_refuses(self, monkeypatch):
         def refuse(self, url, hdrs=None):
             FakeResponse({"message": "Validation Failed"}, status=422).raise_for_status()
+
         monkeypatch.setattr(Collect, "get", refuse)
 
     def test_count_works_where_search_is_refused(self, graphql, search_refuses):
@@ -107,9 +126,18 @@ class TestCountIssues:
         assert sent[0]["json"]["variables"] == {"owner": "facebook", "name": "react"}
 
     def test_missing_repository_counts_as_none(self, graphql, search_refuses):
-        graphql({"data": {"repository": None},
-                 "errors": [{"type": "NOT_FOUND", "path": ["repository"],
-                             "message": "Could not resolve to a Repository with the name 'nope/nope'."}]})
+        graphql(
+            {
+                "data": {"repository": None},
+                "errors": [
+                    {
+                        "type": "NOT_FOUND",
+                        "path": ["repository"],
+                        "message": "Could not resolve to a Repository with the name 'nope/nope'.",
+                    }
+                ],
+            }
+        )
         assert Collect("test-token").countIssues("nope", "nope") is None
 
 
@@ -117,8 +145,10 @@ class TestCountIssuesTool:
     @pytest.fixture
     def tool(self):
         import os
+
         os.environ.setdefault("GOOGLE_API_KEY", "test-key-not-used")
         from tools.langchain_tools import count_issues
+
         return count_issues
 
     def test_reports_the_exact_count_above_1000(self, tool, monkeypatch):
