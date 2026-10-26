@@ -214,7 +214,7 @@ prompts/
 tools/
   langchain_tools.py      The seven LangChain @tool definitions
   helpers/                collect, classify, database, sqlQuery
-  core/                   dependencies, npm_registry, analysis
+  core/                   dependencies, npm_registry
 data/                     Pre-collected issue datasets (JSONL)
 exports/                  Generated CSV/JSON exports
 db/                       SQLite databases & checkpoints

@@ -15,9 +15,14 @@ class Collect:
         }
     
     def countIssues(self, owner, repo):
-        url = f"https://api.github.com/search/issues?q=repo:{owner}/{repo}+is:issue&per_page=1"
-        data = self.get(url).json()
-        return data.get("total_count", 0)
+        # GraphQL rather than the search API: search answers 422 for some public
+        # repos (facebook/react among them). Returns None if the repo does not exist.
+        query = "query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { issues { totalCount } } }"
+        r = requests.post("https://api.github.com/graphql", headers=self.headers,
+                          json={"query": query, "variables": {"owner": owner, "name": repo}}, timeout=30)
+        r.raise_for_status()
+        repository = (r.json().get("data") or {}).get("repository")
+        return repository["issues"]["totalCount"] if repository else None
      
         
     def parseTs(self, s):
@@ -469,7 +474,7 @@ class Collect:
         return projectId, issueIds, collected, skipped, failed
 
     def collectAll(self, owner, repo, db, max_issues=None, start_date=None, end_date=None, direction="desc"):
-        logger.info("Starting collection for %s\%s", owner, repo)
+        logger.info("Starting collection for %s/%s", owner, repo)
         projectId = db.save_project(owner, repo)
         collected = 0
         skipped = 0
@@ -479,7 +484,7 @@ class Collect:
                 direction = "desc"
         
         while True:
-            issuesUrl = f"https://api.github.com/repos/{owner}/{repo}/issues?state=all&sort=created&direction=desc"
+            issuesUrl = f"https://api.github.com/repos/{owner}/{repo}/issues?state=all&sort=created&direction={direction}"
             issues = self.get(f"{issuesUrl}&per_page=100&page={pg}").json()
 
             for issue in issues:

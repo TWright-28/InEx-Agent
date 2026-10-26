@@ -1,7 +1,9 @@
 import hashlib
 import json, re
 import logging
+import threading
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Literal, Optional
@@ -72,8 +74,9 @@ class ParsedResult:
 
 class Classify:
 
-    def __init__(self, model, temperature, promptPath):
+    def __init__(self, model, temperature, promptPath, workers=1, retry_attempts=5):
 
+        self.workers = max(1, int(workers or 1))
         self.model_config = {
                 "model_name": model,
                 "temperature": temperature,
@@ -87,6 +90,7 @@ class Classify:
         self.prompt_path = promptPath
         self._llm = None
         self._structured = None
+        self._clientLock = threading.Lock()
 
         with open(promptPath, 'r', encoding='utf-8') as f:
             self.base_prompt = f.read().strip()
@@ -97,9 +101,15 @@ class Classify:
         self.prompt_hash = hashlib.sha256(self.base_prompt.encode("utf-8")).hexdigest()[:12]
         self.prompt_version = f"{self.prompt_path}@{self.prompt_hash}+t{TEMPLATE_VERSION}"
 
-        self._retrying = Retrying(
-            stop=stop_after_attempt(3),
-            wait=wait_exponential_jitter(initial=2, max=60, jitter=2),
+        self.retry_attempts = retry_attempts
+        self.retry_wait = wait_exponential_jitter(initial=4, max=120, jitter=4)
+
+    def _newRetrying(self):
+        # A Retrying instance carries per-run state (statistics, attempt number),
+        # so worker threads must not share one. Build a fresh controller per call.
+        return Retrying(
+            stop=stop_after_attempt(self.retry_attempts),
+            wait=self.retry_wait,
             retry=retry_if_exception(self._isRetryable),
             before_sleep=before_sleep_log(logger, logging.WARNING),
             reraise=True,
@@ -191,27 +201,39 @@ class Classify:
             return self.callOllama(prompt)
 
         try:
-            result = self._retrying(attempt)
+            result = self._newRetrying()(attempt)
         except AttemptFailure as e:
             result = ParsedResult(raw_text=e.raw_text, status=e.status, error=str(e))
+        except Exception as e:
+            # Hard failures (e.g. google.genai ServerError) propagate to the caller,
+            # which records them. Carry the attempt count across so the audit column
+            # reflects the retries that actually happened rather than defaulting to 1.
+            e.classify_attempts = attempts["n"]
+            raise
         result.attempts = attempts["n"]
         return result
 
     def _cloudStructured(self):
-        if self._structured is None:
-            from langchain.chat_models import init_chat_model
-            self._llm = init_chat_model(
-                self.model_config["model_name"],
-                temperature=self.model_config["temperature"],
-                max_retries=3,   # 0 would mean "use the SDK default of 5"
-                timeout=600,     # otherwise httpx runs with timeout=None
-            )
-            # json_schema is the default and the only native mode in 4.2.3;
-            # json_mode is a deprecated alias and function_calling is discouraged.
-            # include_raw keeps the raw response for auditing and turns a parse
-            # failure into a value rather than an exception.
-            self._structured = self._llm.with_structured_output(
-                ClassificationResult, method="json_schema", include_raw=True)
+        """Build the structured-output runnable once, safely under concurrency."""
+        if self._structured is not None:
+            return self._structured
+        # Double-checked locking: several workers hit this at once on the first
+        # batch, and building two clients would duplicate the handshake.
+        with self._clientLock:
+            if self._structured is None:
+                from langchain.chat_models import init_chat_model
+                self._llm = init_chat_model(
+                    self.model_config["model_name"],
+                    temperature=self.model_config["temperature"],
+                    max_retries=3,   # 0 would mean "use the SDK default of 5"
+                    timeout=600,     # otherwise httpx runs with timeout=None
+                )
+                # json_schema is the default and the only native mode in 4.2.3;
+                # json_mode is a deprecated alias and function_calling is discouraged.
+                # include_raw keeps the raw response for auditing and turns a parse
+                # failure into a value rather than an exception.
+                self._structured = self._llm.with_structured_output(
+                    ClassificationResult, method="json_schema", include_raw=True)
         return self._structured
 
     def callCloud(self, prompt):
@@ -471,41 +493,44 @@ DO NOT REPEAT RAW FILE PATHS OR FULL STACK TRACE OUTPUTS.
             result = self.validateResult(result)
         return result
 
-    def _classifyRows(self, owner, repo, rows, db):
-        tally = {}
-        for row in rows:
-            issue_id, number, title, body, state, state_reason, created_at, closed_at, raw_data_str = row
-            raw_data = json.loads(raw_data_str) if raw_data_str else {}
+    def _prepareIssue(self, owner, repo, row):
+        issue_id, number, title, body, state, state_reason, created_at, closed_at, raw_data_str = row
+        raw_data = json.loads(raw_data_str) if raw_data_str else {}
 
-            # raw_data first: splatting it last let it silently override title/body/state.
-            issue = {
-                **raw_data,
-                "owner": owner,
-                "repo": repo,
-                "number": number,
-                "title": title,
-                "body": body,
-                "state": state,
-                "state_reason": state_reason,
-                "created_at": created_at,
-                "closed_at": closed_at,
-            }
+        # raw_data first: splatting it last let it silently override title/body/state.
+        issue = {
+            **raw_data,
+            "owner": owner,
+            "repo": repo,
+            "number": number,
+            "title": title,
+            "body": body,
+            "state": state,
+            "state_reason": state_reason,
+            "created_at": created_at,
+            "closed_at": closed_at,
+        }
+        return issue_id, number, issue
 
-            logger.info("Classifying #%d: %s", number, (title or "")[:60])
+    def _classifyAndSave(self, owner, repo, row, db):
+        """Classify one issue and persist it. Always returns a status, never raises
+        (except KeyboardInterrupt/SystemExit), so one bad issue cannot kill a batch."""
+        issue_id, number, issue = self._prepareIssue(owner, repo, row)
+        logger.info("Classifying #%s: %s", number, (issue.get("title") or "")[:60])
 
-            try:
-                result = self.classifyOne(issue)
-            except Exception as e:  # never a bare except: KeyboardInterrupt must pass through
-                logger.exception("Classification failed for #%d", number)
-                result = ParsedResult(status="api_error", error=f"{type(e).__name__}: {e}")
+        try:
+            result = self.classifyOne(issue)
+        except Exception as e:  # never a bare except: KeyboardInterrupt must pass through
+            logger.exception("Classification failed for #%s", number)
+            result = ParsedResult(status="api_error", error=f"{type(e).__name__}: {e}",
+                                  attempts=getattr(e, "classify_attempts", 1))
 
-            if not result.ok:
-                logger.warning("Issue #%d recorded as %s: %s", number, result.status, result.error)
-            elif result.flags:
-                logger.info("Issue #%d flagged %s", number, result.flags)
+        if not result.ok:
+            logger.warning("Issue #%s recorded as %s: %s", number, result.status, result.error)
+        elif result.flags:
+            logger.info("Issue #%s flagged %s", number, result.flags)
 
-            tally[result.status] = tally.get(result.status, 0) + 1
-
+        try:
             db.save_classification(issue_id,
             {
                 "classification": result.label,
@@ -522,7 +547,41 @@ DO NOT REPEAT RAW FILE PATHS OR FULL STACK TRACE OUTPUTS.
                 temp =self.model_config["temperature"],
                 classifiedat= datetime.now().isoformat(),
             )
+        except Exception:
+            # The row is lost but the run continues; it stays unclassified and is
+            # picked up on the next run, which is the same contract as a failure.
+            logger.exception("Could not persist classification for #%s", number)
+            return "save_error"
 
+        return result.status
+
+    def _classifyRows(self, owner, repo, rows, db, workers=None):
+        workers = max(1, int(workers if workers is not None else self.workers))
+        workers = min(workers, len(rows))
+        tally = {}
+
+        def record(status):
+            tally[status] = tally.get(status, 0) + 1
+
+        if workers == 1:
+            for row in rows:
+                record(self._classifyAndSave(owner, repo, row, db))
+            return tally
+
+        # Build the shared client before the pool starts so workers don't all race
+        # to construct it on their first call.
+        if self.useStructured:
+            self._cloudStructured()
+
+        logger.info("Classifying %d issues across %d workers", len(rows), workers)
+        done = 0
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="classify") as pool:
+            futures = [pool.submit(self._classifyAndSave, owner, repo, row, db) for row in rows]
+            for fut in as_completed(futures):
+                record(fut.result())
+                done += 1
+                if done % 25 == 0 or done == len(rows):
+                    logger.info("  progress %d/%d  %s", done, len(rows), tally)
         return tally
 
     def _summarise(self, owner, repo, tally):

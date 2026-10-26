@@ -1,6 +1,8 @@
 from __future__ import annotations
 import logging
 import re
+from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import requests
@@ -9,6 +11,35 @@ from tools.core.npm_registry import fetchFull, sortVersionsDesc
 logger = logging.getLogger(__name__)
 
 DOC_CACHE_DIR = Path(".npm_doc_cache")
+
+
+@lru_cache(maxsize=None)
+def _parseTs(value):
+    """Parse an npm or GitHub timestamp to an aware UTC datetime.
+
+    Cached: linking issues to versions compares every candidate release against
+    every issue date, so the same few thousand strings are parsed millions of
+    times otherwise.
+
+    npm returns '2020-01-01T00:00:00.000Z', GitHub returns '2020-01-01T00:00:00Z',
+    and date filters arrive as plain '2020-01-01'. These were compared as raw
+    strings, so sub-second precision could order a release before an issue it
+    actually followed. Returns None if the value cannot be parsed.
+    """
+    if not value:
+        return None
+    text = str(value).strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _isPrerelease(version):
+    return "-" in str(version)
 
 
 def _clean(v):
@@ -37,10 +68,38 @@ class DependencySnapshotter:
         return npm_package
 
     def _live_version_at(self, issue_created_at, versions_with_times):
+        """The release that was live when the issue was filed.
+
+        Previously this returned the first entry of a SEMVER-descending list whose
+        publish time was <= the issue date. Semver order is not chronological, so a
+        backport (1.9.5 shipped after 2.0.0) sorts below 2.x and was skipped --
+        linking the issue to a version that was not the current release. We now pick
+        the most recently PUBLISHED release at or before the issue date.
+
+        Stable releases win over prereleases, because a prerelease is never the npm
+        `latest` dist-tag and is not what a reporter would have installed. Selecting
+        purely by publish time would otherwise start picking `x.y.z-next.N` builds
+        that the old semver ordering happened to suppress.
+        """
+        issued = _parseTs(issue_created_at)
+        if issued is None:
+            return None
+
+        best_stable = None
+        best_pre = None
         for version, pub in versions_with_times:
-            if pub and pub <= issue_created_at:
-                return version, pub
-        return None
+            published = _parseTs(pub)
+            if published is None or published > issued:
+                continue
+            if _isPrerelease(version):
+                if best_pre is None or published > best_pre[0]:
+                    best_pre = (published, version, pub)
+            else:
+                if best_stable is None or published > best_stable[0]:
+                    best_stable = (published, version, pub)
+
+        picked = best_stable or best_pre
+        return (picked[1], picked[2]) if picked else None
 
     def _filter_versions_by_range(self, versions, version_range):
         m = re.match(r"^(\d+)\.x$", version_range)
@@ -87,12 +146,13 @@ class DependencySnapshotter:
 
         if version_start or version_end:
             for v in versions_desc:
-                pub = time_map.get(v)
-                if not pub:
+                published = _parseTs(time_map.get(v))
+                if published is None:
                     continue
-                if version_start and pub < version_start:
+                lower, upper = _parseTs(version_start), _parseTs(version_end)
+                if lower and published < lower:
                     continue
-                if version_end and pub > version_end:
+                if upper and published > upper:
                     continue
                 selected.add(v)
 

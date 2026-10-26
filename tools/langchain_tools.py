@@ -1,9 +1,9 @@
 from tools.helpers.database import InExTool
 from tools.helpers.collect import Collect
 from tools.helpers.classify import Classify
-from tools.helpers.sqlQuery import runSql, describeSchema, exportQuery
+from tools.helpers.sqlQuery import runSql, describeSchema, exportQuery, MAX_SQL_ROWS
 from tools.helpers.issueList import parseIssueListCsv
-from config import DB_PATH, GITHUB_TOKEN, temperature, classifier, classifyPrompt
+from config import DB_PATH, GITHUB_TOKEN, temperature, classifier, classifyPrompt, classifyWorkers, classifyRetries
 from langchain.tools import tool
 from tools.core.dependencies import DependencySnapshotter
 from collections import defaultdict
@@ -11,18 +11,18 @@ import sqlite3
 
 
 db = InExTool(DB_PATH)
-cl = Classify(classifier, temperature, classifyPrompt)
+cl = Classify(classifier, temperature, classifyPrompt, workers=classifyWorkers,
+              retry_attempts=classifyRetries)
 snap = DependencySnapshotter()
 ro_conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True, check_same_thread=False)
-MAX_SQL_ROWS = 50
 
-@tool('count_issues', description="Count the total number of issues from a github repo without collecting them. Use this before Collect_all to check if the repo is large. Input should be owner/repo. Note: counts above 1000 are reported as '1000+' due to GitHub API limits.")
+@tool('count_issues', description="Count the total number of issues from a github repo without collecting them. Use this before Collect_all to check if the repo is large. Input should be owner/repo. Returns the exact count.")
 def count_issues(repoName: str) -> str:
     owner, repo = repoName.split("/")
     collector = Collect(GITHUB_TOKEN)
     count = collector.countIssues(owner, repo)
-    if count >= 1000: 
-        return f"{owner}/{repo} has 1000+ issues (exact count unavailable due to GitHub API limit)."
+    if count is None:
+        return f"{owner}/{repo} was not found on GitHub."
     return f"{owner}/{repo} has {count} issues."
 
 @tool('collect_all', description="Collect issues from a GitHub repo and save to the database. Input: repo_name as 'owner/repo'. Optional: count (max number of issues), start_date and end_date (ISO 'YYYY-MM-DD', filter by issue creation date), direction ('desc' for newest-first, 'asc' for oldest-first; default desc). Long-running: multiple API calls per issue.")
@@ -63,7 +63,8 @@ def describe_schema() -> dict:
     return describeSchema()
 
 
-@tool("run_sql", description=("Run a READ-ONLY SQL SELECT against the database. For analysis questions not covered by other tools. Only SELECT allowed; writes are rejected. Call describe_schema first. Results capped at 200 rows — prefer COUNT/AVG/GROUP BY for large tables."))
+@tool("run_sql", description=("Run a READ-ONLY SQL SELECT against the database. For analysis questions not covered by other tools. Only SELECT allowed; writes are rejected. Use the schema in your instructions for table and column names. "
+                              f"Results capped at {MAX_SQL_ROWS} rows — prefer COUNT/AVG/GROUP BY for large tables."))
 def run_sql(query: str) -> dict:
     return runSql(query)
 
@@ -164,7 +165,7 @@ def import_issue_list(csv_path: str, column: str = None, classify: bool = True) 
         "unparseable_count": len(unparseable),
     }
 
-@tool("export_data", description=("Export the results of a SQL SELECT query to a file. Use when the user wants to save data for external analysis. query: a valid SELECT statement. format: 'csv' or 'json' (default 'csv'). filename: optional, auto-generated if omitted. No row limit — exports all matching rows. Files are written to the exports/ directory. Call describe_schema first if column names are needed."))
+@tool("export_data", description=("Export the results of a SQL SELECT query to a file. Use when the user wants to save data for external analysis. query: a valid SELECT statement. format: 'csv' or 'json' (default 'csv'). filename: optional plain file name (no directories), auto-generated if omitted. No row limit — exports all matching rows. Files are written to the exports/ directory. Use the schema in your instructions for table and column names."))
 def export_data(query: str, format: str = "csv", filename: str = None) -> dict:
     return exportQuery(query, format, filename)
 
