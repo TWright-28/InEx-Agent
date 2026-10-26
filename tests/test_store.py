@@ -114,13 +114,6 @@ class TestLookups:
         assert db.count_existing_issues(pid, [101, 102, 999]) == 2
         assert db.count_existing_issues(pid, []) == 0
 
-    def test_count_ok_classifications_ignores_failures_and_other_runs(self, seeded):
-        db, pid, ids = seeded
-        save(db, ids[0], label="Intrinsic")
-        save(db, ids[1], label=None, status="api_error")
-        save(db, ids[2], label="Intrinsic", model="qwen3:30b")
-        assert db.count_ok_classifications(pid, [101, 102, 103], **_keys(RUN)) == 1
-
     def test_has_classification(self, seeded):
         db, _, ids = seeded
         assert db.has_classification(ids[0]) is False

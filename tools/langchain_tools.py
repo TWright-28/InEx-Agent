@@ -1,4 +1,3 @@
-from collections import defaultdict
 from dataclasses import asdict
 from pathlib import Path
 
@@ -17,16 +16,19 @@ from inex.clients.npm import NpmClient
 from inex.errors import InexError
 from inex.services.classification import ClassificationService
 from inex.services.collection import CollectionService
+from inex.services.imports import ImportService
 from inex.services.linkage import LinkageService
+from inex.services.queries import MAX_QUERY_ROWS as MAX_SQL_ROWS
+from inex.services.queries import QueryService
 from inex.store.database import Store
-from tools.helpers.issueList import parseIssueListCsv
-from tools.helpers.sqlQuery import MAX_SQL_ROWS, describeSchema, exportQuery, runSql
 
 db = Store(DB_PATH)
 cl = ClassificationService(
     db, classifyPrompt, classifier, temperature, workers=classifyWorkers, retries=classifyRetries
 )
 linkage = LinkageService(db, NpmClient(Path(".npm_doc_cache")))
+queries = QueryService(db, Path("exports"))
+imports = ImportService(db, CollectionService(db, GITHUB_TOKEN), cl)
 
 
 @tool(
@@ -133,16 +135,6 @@ def snapshot_dependencies(
 
 
 @tool(
-    "describe_schema",
-    description=(
-        "Returns the database schema — every table and its columns. Call before writing a run_sql query so you use correct names."
-    ),
-)
-def describe_schema() -> dict:
-    return describeSchema(db)
-
-
-@tool(
     "run_sql",
     description=(
         "Run a READ-ONLY SQL SELECT against the database. For analysis questions not covered by other tools. Only SELECT allowed; writes are rejected. Use the schema in your instructions for table and column names. "
@@ -150,7 +142,11 @@ def describe_schema() -> dict:
     ),
 )
 def run_sql(query: str) -> dict:
-    return runSql(db, query)
+    try:
+        result = queries.run(query)
+    except InexError as e:
+        return {"status": "error", "code": e.code, "message": e.message}
+    return {"status": "ok", **asdict(result)}
 
 
 @tool(
@@ -179,33 +175,10 @@ def preview_classification(
 )
 def preview_issue_list(csv_path: str, column: str = None) -> dict:
     try:
-        entries, unparseable = parseIssueListCsv(csv_path, column)
-    except FileNotFoundError:
-        return {"status": "error", "code": "file_not_found", "csv_path": csv_path}
-
-    by_repo = defaultdict(list)
-    for owner, repo, num in entries:
-        by_repo[(owner, repo)].append(num)
-
-    repos = []
-    total_already = 0
-    for (owner, repo), nums in sorted(by_repo.items()):
-        project_id = db.project_id(owner, repo)
-        already = db.count_existing_issues(project_id, nums) if project_id else 0
-        total_already += already
-        repos.append({"repo": f"{owner}/{repo}", "issues": len(nums), "already_in_db": already})
-
-    return {
-        "status": "ok",
-        "csv_path": csv_path,
-        "total_issues": len(entries),
-        "distinct_repos": len(by_repo),
-        "already_in_db": total_already,
-        "to_collect": len(entries) - total_already,
-        "repos": repos,
-        "unparseable_count": len(unparseable),
-        "unparseable_sample": unparseable[:5],
-    }
+        result = imports.preview_list(csv_path, column)
+    except InexError as e:
+        return {"status": "error", "code": e.code, "message": e.message}
+    return {"status": "ok", **asdict(result)}
 
 
 @tool(
@@ -214,61 +187,10 @@ def preview_issue_list(csv_path: str, column: str = None) -> dict:
 )
 def import_issue_list(csv_path: str, column: str = None, classify: bool = True) -> dict:
     try:
-        entries, unparseable = parseIssueListCsv(csv_path, column)
-    except FileNotFoundError:
-        return {"status": "error", "code": "file_not_found", "csv_path": csv_path}
-
-    if not entries:
-        return {
-            "status": "error",
-            "code": "no_valid_entries",
-            "csv_path": csv_path,
-            "unparseable_sample": unparseable[:5],
-        }
-
-    by_repo = defaultdict(list)
-    for owner, repo, num in entries:
-        by_repo[(owner, repo)].append(num)
-
-    collector = CollectionService(db, GITHUB_TOKEN)
-    results = []
-    totals = {"collected": 0, "skipped": 0, "failed": 0, "classified": 0}
-
-    for (owner, repo), nums in sorted(by_repo.items()):
-        specific = collector.collect_specific(owner, repo, nums)
-        project_id, issue_ids = specific.project_id, list(specific.issue_ids)
-        collected, skipped, failed = specific.collected, specific.skipped, specific.failed
-        classified = 0
-        if classify and issue_ids:
-            cl.classify_ids(owner, repo, issue_ids)
-            # Scope the count to this run's model/prompt/temperature and to rows that
-            # actually succeeded, otherwise legacy rows and failed attempts are both
-            # reported as newly classified.
-            classified = db.count_ok_classifications(
-                project_id, nums, classifier, cl.prompt_version, temperature
-            )
-
-        totals["collected"] += collected
-        totals["skipped"] += skipped
-        totals["failed"] += failed
-        totals["classified"] += classified
-        results.append(
-            {
-                "repo": f"{owner}/{repo}",
-                "collected": collected,
-                "skipped": skipped,
-                "failed": failed,
-                "classified": classified,
-            }
-        )
-
-    return {
-        "status": "ok",
-        "csv_path": csv_path,
-        "totals": totals,
-        "repos": results,
-        "unparseable_count": len(unparseable),
-    }
+        result = imports.import_list(csv_path, column, classify)
+    except InexError as e:
+        return {"status": "error", "code": e.code, "message": e.message}
+    return {"status": "ok", **asdict(result)}
 
 
 @tool(
@@ -278,4 +200,8 @@ def import_issue_list(csv_path: str, column: str = None, classify: bool = True) 
     ),
 )
 def export_data(query: str, format: str = "csv", filename: str = None) -> dict:
-    return exportQuery(db, query, format, filename)
+    try:
+        result = queries.export(query, format, filename)
+    except InexError as e:
+        return {"status": "error", "code": e.code, "message": e.message}
+    return {"status": "ok", **asdict(result)}

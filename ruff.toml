@@ -12,7 +12,6 @@ ban-relative-imports = "all"
 [lint.per-file-ignores]
 "tools/**" = ["N"]
 "config.py" = ["N"]
-"seeder.py" = ["N", "E402"]
 "eval.py" = ["N"]
 "import_list.py" = ["N", "E402"]
 "agent.py" = ["N"]

@@ -183,17 +183,6 @@ class Store:
             self._one("SELECT 1 FROM classifications WHERE issue_id = ?", (issue_id,)) is not None
         )
 
-    def count_ok_classifications(self, project_id, numbers, model, prompt_version, temperature):
-        if not numbers:
-            return 0
-        placeholders = ",".join("?" * len(numbers))
-        return self._one(
-            "SELECT COUNT(*) FROM classifications c JOIN issues i ON i.id = c.issue_id "
-            "WHERE i.project_id = ? AND c.model = ? AND c.prompt_version = ? "
-            f"AND c.temperature = ? AND {SUCCEEDED} AND i.issue_number IN ({placeholders})",
-            (project_id, model, prompt_version, temperature, *numbers),
-        )[0]
-
     def set_package_name(self, project_id, package_name):
         self._write("UPDATE projects SET package_name = ? WHERE id = ?", (package_name, project_id))
 
