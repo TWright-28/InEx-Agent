@@ -46,19 +46,10 @@ MAX_SAMPLE_TITLE_CHARS = 80
 PREVIEW_SAMPLE_SIZE = 5
 PROGRESS_EVERY = 25
 
-# Bump whenever formatIssueData's task template changes. It is folded into
-# prompt_version because the prompt actually sent is the guide file PLUS this
-# template -- hashing only the file would let the template drift silently.
 TEMPLATE_VERSION = "2"
 
 
 class AttemptFailure(Exception):
-    """A classification attempt that produced no usable label.
-
-    Carries the status that should be recorded if retries are exhausted, so a
-    failure is never collapsed into the 'Unknown' taxonomy label.
-    """
-
     def __init__(self, status, message, raw_text="", retryable=False):
         super().__init__(message)
         self.status = status
@@ -146,8 +137,6 @@ class ClassificationService:
         )
 
     def _newRetrying(self):
-        # A Retrying instance carries per-run state (statistics, attempt number),
-        # so worker threads must not share one. Build a fresh controller per call.
         return Retrying(
             stop=stop_after_attempt(self.retry_attempts),
             wait=self.retry_wait,
@@ -156,8 +145,6 @@ class ClassificationService:
             reraise=True,
         )
 
-    # Cloud providers routed through langchain's init_chat_model; anything else
-    # (e.g. "qwen3:30b") is treated as a local Ollama tag.
     CLOUD_PROVIDERS = {"openai", "anthropic", "google_genai", "google_vertexai"}
 
     @property
@@ -177,16 +164,8 @@ class ClassificationService:
     def extractProbabilities(self, text):
         return match_probabilities(self.profile, text) or None
 
-    # ---------------- retry policy ----------------
-
     @staticmethod
     def _isRetryable(exc):
-        """Transient faults only. Auth, schema and context-overflow errors fail fast.
-
-        langchain-google-genai 4.2.3 sits on the google-genai SDK, so a 429 arrives
-        as ChatGoogleGenerativeAIError with a google.genai.errors.ClientError as
-        __cause__ -- google.api_core.exceptions.ResourceExhausted is never raised.
-        """
         if isinstance(exc, AttemptFailure):
             return exc.retryable
 
@@ -208,10 +187,8 @@ class ClassificationService:
             "RemoteProtocolError",
         ):
             return True
-        # google.genai.errors.ServerError propagates uncaught by langchain.
         if name == "ServerError":
             return True
-        # Context overflow is a subclass of ClientError -- never worth retrying.
         if name in ("GoogleContextOverflowError", "ContextOverflowError"):
             return False
         if name in ("ChatGoogleGenerativeAIError", "GoogleGenerativeAIError", "ClientError"):
@@ -222,10 +199,7 @@ class ClassificationService:
             return "429" in text or "RESOURCE_EXHAUSTED" in text
         return False
 
-    # ---------------- model calls ----------------
-
     def callModel(self, prompt):
-        """Run one attempt (with retries) and normalise both paths to ParsedResult."""
         attempts = {"n": 0}
 
         def attempt():
@@ -239,20 +213,14 @@ class ClassificationService:
         except AttemptFailure as e:
             result = ParsedResult(raw_text=e.raw_text, status=e.status, error=str(e))
         except Exception as e:
-            # Hard failures (e.g. google.genai ServerError) propagate to the caller,
-            # which records them. Carry the attempt count across so the audit column
-            # reflects the retries that actually happened rather than defaulting to 1.
             e.classify_attempts = attempts["n"]
             raise
         result.attempts = attempts["n"]
         return result
 
     def _cloudStructured(self):
-        """Build the structured-output runnable once, safely under concurrency."""
         if self._structured is not None:
             return self._structured
-        # Double-checked locking: several workers hit this at once on the first
-        # batch, and building two clients would duplicate the handshake.
         with self._clientLock:
             if self._structured is None:
                 from langchain.chat_models import init_chat_model
@@ -260,13 +228,9 @@ class ClassificationService:
                 self._llm = init_chat_model(
                     self.model_config["model_name"],
                     temperature=self.model_config["temperature"],
-                    max_retries=CLOUD_SDK_RETRIES,  # 0 would mean "use the SDK default of 5"
-                    timeout=MODEL_TIMEOUT_SECONDS,  # otherwise httpx runs with timeout=None
+                    max_retries=CLOUD_SDK_RETRIES,
+                    timeout=MODEL_TIMEOUT_SECONDS,
                 )
-                # json_schema is the default and the only native mode in 4.2.3;
-                # json_mode is a deprecated alias and function_calling is discouraged.
-                # include_raw keeps the raw response for auditing and turns a parse
-                # failure into a value rather than an exception.
                 self._structured = self._llm.with_structured_output(
                     self.response_schema, method="json_schema", include_raw=True
                 )
@@ -280,8 +244,6 @@ class ClassificationService:
 
         raw_text = getattr(raw, "content", "") or ""
         if not isinstance(raw_text, str):
-            # Only happens if include_thoughts is ever enabled, which turns content
-            # into a list of blocks. Keep the column a string regardless.
             raw_text = json.dumps(raw_text, default=str)
 
         finish = (getattr(raw, "response_metadata", None) or {}).get("finish_reason")
@@ -355,14 +317,7 @@ class ClassificationService:
             label=label, probs=self.extractProbabilities(responseText) or {}, raw_text=responseText
         )
 
-    # ---------------- validation ----------------
-
     def validateResult(self, result):
-        """Check a parsed result before it is persisted.
-
-        Returns the result, mutated with flags / argmax_label, and with status set
-        to a fatal code if the result cannot be trusted as a label.
-        """
         if result.label not in self.Labels:
             result.status, result.error = "invalid_result", f"unknown label {result.label!r}"
             result.label = None
@@ -371,8 +326,6 @@ class ClassificationService:
         probs = result.probs or {}
         missing = set(self.Labels) - set(probs)
         if missing:
-            # extractProbabilities returns a dict if even ONE label matched, which
-            # is how single-key dicts were previously accepted as valid.
             result.status = "invalid_result"
             result.error = f"probabilities missing {sorted(missing)}"
             result.label = None
@@ -396,13 +349,10 @@ class ClassificationService:
         if len(winners) > 1:
             result.flags.append("argmax_tie")
         elif winners[0] != result.label:
-            # Record the disagreement; never override what the model actually said.
             result.flags.append("argmax_mismatch")
             result.argmax_label = winners[0]
 
         return result
-
-    # ---------------- prompt construction ----------------
 
     def formatComment(self, i, comment, maxLen, alwaysShowRole):
         commentUser, commentRole = self.getAuthorInfo(comment)
@@ -419,7 +369,6 @@ class ClassificationService:
 
     def formatIssueData(self, issue):
         project = f"{issue['owner']}/{issue['repo']}"
-        # `or` rather than a get() default: the key often exists with value None.
         title = issue.get("title") or "No title"
         body = issue.get("body") or "No description provided"
 
@@ -442,8 +391,6 @@ class ClassificationService:
         closingPr = issue.get("closing_pr")
         closingCommit = issue.get("closing_commit")
 
-        # State absence explicitly: the guide leans heavily on PR evidence, and an
-        # empty string left the model unable to tell "no PR" from "data missing".
         if closingPr:
             prTitle = closingPr.get("title", "No title")
             prBody = closingPr.get("body", "")
@@ -535,8 +482,6 @@ Analyze this issue using the classification guide and reasoning framework provid
             task = self._markdown_task()
         return header + task
 
-    # ---------------- classification ----------------
-
     def classifyOne(self, issue):
         result = self.callModel(self.base_prompt + "\n" + self.formatIssueData(issue))
         if result.ok:
@@ -549,7 +494,6 @@ Analyze this issue using the classification guide and reasoning framework provid
         )
         raw_data = json.loads(raw_data_str) if raw_data_str else {}
 
-        # raw_data first: splatting it last let it silently override title/body/state.
         issue = {
             **raw_data,
             "owner": owner,
@@ -565,14 +509,12 @@ Analyze this issue using the classification guide and reasoning framework provid
         return issue_id, number, issue
 
     def _classifyAndSave(self, owner, repo, row):
-        """Classify one issue and persist it. Always returns a status, never raises
-        (except KeyboardInterrupt/SystemExit), so one bad issue cannot kill a batch."""
         issue_id, number, issue = self._prepareIssue(owner, repo, row)
         logger.info("Classifying #%s: %s", number, (issue.get("title") or "")[:MAX_TITLE_LOG_CHARS])
 
         try:
             result = self.classifyOne(issue)
-        except Exception as e:  # never a bare except: KeyboardInterrupt must pass through
+        except Exception as e:
             logger.exception("Classification failed for #%s", number)
             result = ParsedResult(
                 status="api_error",
@@ -604,8 +546,6 @@ Analyze this issue using the classification guide and reasoning framework provid
                 classified_at=datetime.now().isoformat(),
             )
         except Exception:
-            # The row is lost but the run continues; it stays unclassified and is
-            # picked up on the next run, which is the same contract as a failure.
             logger.exception("Could not persist classification for #%s", number)
             return "save_error"
 
@@ -624,8 +564,6 @@ Analyze this issue using the classification guide and reasoning framework provid
                 record(self._classifyAndSave(owner, repo, row))
             return tally
 
-        # Build the shared client before the pool starts so workers don't all race
-        # to construct it on their first call.
         if self.useStructured:
             self._cloudStructured()
 

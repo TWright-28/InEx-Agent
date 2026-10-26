@@ -1,6 +1,3 @@
-"""Classifier behaviour: result validation, retry policy, prompt construction, and
-the structured-output schema."""
-
 import pytest
 import requests
 from conftest import FULL_PROBS, row_for
@@ -17,8 +14,6 @@ class TestValidateResult:
         assert r.ok and r.flags == []
 
     def test_partial_probabilities_are_fatal(self, classifier):
-        """The hole that let 379 single-key dicts through: a dict was accepted if
-        even one label matched."""
         r = self._r(classifier, "Intrinsic", {"Intrinsic": 0.9})
         assert r.status == "invalid_result"
         assert r.label is None
@@ -76,9 +71,6 @@ class TestRetryPolicy:
         assert classifier._isRetryable(e)
 
     def test_quota_error_retries_via_cause_code(self, classifier):
-        """langchain-google-genai wraps a 429 as ChatGoogleGenerativeAIError with the
-        google.genai ClientError as __cause__. google.api_core is never involved."""
-
         class ChatGoogleGenerativeAIError(Exception):
             pass
 
@@ -152,8 +144,6 @@ class TestRetryLoop:
         assert r.status == "truncated" and calls["n"] == 1
 
     def test_hard_exception_carries_its_attempt_count(self, classifier):
-        """A hard failure propagates out of callModel; the count must ride along or
-        the audit column reports 1 for something that was retried."""
         from google.genai import errors as ge
 
         classifier.retry_attempts = 4

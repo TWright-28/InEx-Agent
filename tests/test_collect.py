@@ -1,9 +1,3 @@
-"""Issue collection against a fake GitHub.
-
-The fake honours the list endpoint's `direction` and `page` parameters the way
-GitHub does, so these tests catch a request that asks for the wrong order.
-"""
-
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -12,7 +6,6 @@ import requests
 from inex.errors import InexError
 from inex.services.collection import CollectionService, CollectResult, CountResult
 
-# number -> created_at, deliberately listed out of order
 CREATED = {
     3: "2020-03-10T00:00:00Z",
     1: "2020-01-10T00:00:00Z",
@@ -104,9 +97,6 @@ class TestCollectResult:
 
 
 class TestCountIssues:
-    """GitHub's search API answers 422 for some public repositories (facebook/react
-    among them), so the count must not depend on it."""
-
     @pytest.fixture
     def graphql(self, monkeypatch):
         sent = []

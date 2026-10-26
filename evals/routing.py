@@ -118,7 +118,6 @@ def eval_agent():
 
 
 EXAMPLES = [
-    # 1 - unbounded collect, small repo (45 < 1000): counts then proceeds
     {
         "inputs": {"request": "collect issues from yeoman/yeoman-test", "count_issues_returns": 45},
         "outputs": {
@@ -127,7 +126,6 @@ EXAMPLES = [
             "must_not_call": None,
         },
     },
-    # 2 - dependency snapshot (seeded DB already has classifications)
     {
         "inputs": {
             "request": "get the dependency snapshot for yeoman/yeoman-test "
@@ -139,7 +137,6 @@ EXAMPLES = [
             "must_not_call": None,
         },
     },
-    # 3 - multi-turn: user confirms -> classify_all runs after preview
     {
         "inputs": {"turns": ["classify the issues for yeoman/yeoman-test", "yes, go ahead"]},
         "outputs": {
@@ -148,7 +145,6 @@ EXAMPLES = [
             "must_not_call": None,
         },
     },
-    # 4 - multi-turn: user declines -> classify_all must NOT run
     {
         "inputs": {
             "turns": ["classify the issues for yeoman/yeoman-test", "no, don't classify them"]
@@ -159,7 +155,6 @@ EXAMPLES = [
             "must_not_call": "classify_all",
         },
     },
-    # 5 - analysis question -> run_sql
     {
         "inputs": {
             "request": "how many issues does yeoman-test have and "
@@ -167,12 +162,10 @@ EXAMPLES = [
         },
         "outputs": {"expected_tool": "run_sql", "before": None, "must_not_call": None},
     },
-    # 6 - export request -> export_data, not run_sql
     {
         "inputs": {"request": "export the classification data for yeoman-test to a csv file"},
         "outputs": {"expected_tool": "export_data", "before": None, "must_not_call": None},
     },
-    # 7 - standalone count -> count_issues, must NOT proceed to collect
     {
         "inputs": {
             "request": "how many issues does yeoman/yeoman-test have?",
@@ -184,7 +177,6 @@ EXAMPLES = [
             "must_not_call": "collect_all",
         },
     },
-    # 8 - standalone preview -> preview_classification, must NOT proceed to classify
     {
         "inputs": {
             "request": "show me what would be classified for yeoman/yeoman-test "
@@ -196,7 +188,6 @@ EXAMPLES = [
             "must_not_call": "classify_all",
         },
     },
-    # 9 - bounded collect -> user gave a count, must NOT redundantly count first
     {
         "inputs": {"request": "collect the 50 most recent issues from yeoman/yeoman-test"},
         "outputs": {
@@ -205,8 +196,6 @@ EXAMPLES = [
             "must_not_call": "count_issues",
         },
     },
-    # 10 - unbounded collect, large repo (5000 >= 1000): counts, must pause for
-    #      confirmation -> collect_all must NOT run within this single turn
     {
         "inputs": {
             "request": "collect issues from yeoman/yeoman-test",

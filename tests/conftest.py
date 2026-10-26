@@ -40,7 +40,6 @@ def db(db_path):
 
 @pytest.fixture
 def seeded(db):
-    """A project with three issues and no classifications."""
     pid = db.save_project("acme", "widget")
     ids = []
     for n in (101, 102, 103):
@@ -118,7 +117,6 @@ def settings_with_bad_profile(settings, tmp_path):
 
 @pytest.fixture
 def classifier():
-    """Ollama-path classifier: never reaches the network in these tests."""
     from inex.services.classification import ClassificationService
 
     cl = ClassificationService(None, load_inex_profile(), "qwen3:30b", 0.2, workers=1)
@@ -128,7 +126,6 @@ def classifier():
 
 @pytest.fixture
 def cloud_classifier():
-    """Cloud-path classifier: constructed only, no request is ever issued."""
     from inex.services.classification import ClassificationService
 
     os.environ.setdefault("GOOGLE_API_KEY", "test-key-not-used")
@@ -140,7 +137,6 @@ def cloud_classifier():
 
 
 def row_for(issue_id, number=42, state_reason=None, raw_data=None):
-    """A row shaped like getUnclassifiedInWindow returns."""
     return (
         issue_id,
         number,

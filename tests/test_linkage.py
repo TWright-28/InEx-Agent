@@ -1,11 +1,3 @@
-"""Issue-to-version linkage.
-
-A naive "highest semver published at or before the issue date" heuristic disagrees
-with this implementation on 35% of a 53,000-issue corpus, almost all of it
-prereleases being treated as the live release. These tests pin the correct
-behaviour.
-"""
-
 import pytest
 
 from inex.services.linkage import (
@@ -19,7 +11,6 @@ from inex.services.linkage import (
 @pytest.fixture
 def pick():
     def _pick(times, issue_date):
-        # built exactly as snapshot_for_classified builds it
         ordered = sort_versions_desc(list(times))
         got = live_version_at(issue_date, [(v, times.get(v)) for v in ordered])
         return got[0] if got else None
@@ -29,8 +20,6 @@ def pick():
 
 class TestPublishOrder:
     def test_backport_published_after_a_major_wins(self, pick):
-        """1.9.5 ships after 2.0.0. Semver order puts it below 2.x, so the old
-        heuristic skipped it and linked the issue to 2.0.0."""
         times = {
             "1.9.0": "2019-06-01T00:00:00.000Z",
             "2.0.0": "2020-01-01T00:00:00.000Z",
@@ -54,8 +43,6 @@ class TestPublishOrder:
 
 class TestPrereleases:
     def test_a_newer_prerelease_does_not_displace_the_stable_release(self, pick):
-        """The dominant correction: a prerelease is never the npm `latest` tag and
-        is not what a reporter installed."""
         times = {"2.0.0": "2020-01-01T00:00:00.000Z", "2.1.0-next.999": "2020-06-01T00:00:00.000Z"}
         assert pick(times, "2020-07-01T00:00:00Z") == "2.0.0"
 
@@ -70,8 +57,6 @@ class TestPrereleases:
 
 class TestTimestamps:
     def test_release_half_a_second_after_the_issue_is_excluded(self, pick):
-        """npm reports sub-second precision, GitHub does not. Compared as raw
-        strings, '.' sorts before 'Z' and the release looked earlier."""
         times = {"1.0.0": "2019-01-01T00:00:00.000Z", "1.1.0": "2020-01-01T09:00:00.500Z"}
         assert pick(times, "2020-01-01T09:00:00Z") == "1.0.0"
 

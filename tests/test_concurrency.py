@@ -1,9 +1,3 @@
-"""Parallel classification.
-
-Three races had to be closed for this to be safe: shared tenacity retry state,
-duplicate client construction, and concurrent SQLite writes.
-"""
-
 import threading
 import time
 
@@ -23,8 +17,6 @@ def _ok():
 
 
 class RecordingDB:
-    """Stands in for Store, capturing writes from whichever thread makes them."""
-
     def __init__(self):
         self.saved = []
         self.threads = set()
@@ -44,7 +36,7 @@ def make(workers, classify_one):
         None, load_inex_profile(), "google_genai:gemini-2.5-pro", 0.2, workers=workers
     )
     cl.retry_wait = lambda *a, **k: 0
-    cl._cloudStructured = lambda: None  # never build a real client
+    cl._cloudStructured = lambda: None
     cl.classifyOne = classify_one
     return cl
 
@@ -134,8 +126,6 @@ class TestFailureIsolation:
 
 class TestRaces:
     def test_retry_state_is_not_shared_between_workers(self, rows):
-        """A single tenacity Retrying object carries per-run state; workers sharing
-        one would interfere with each other's attempt counts."""
         import collections
 
         from inex.services.classification import AttemptFailure, ClassificationService
@@ -186,7 +176,6 @@ class TestRaces:
         assert builds["n"] == 1
 
     def test_concurrent_writes_to_real_sqlite(self, db, seeded, rows):
-        """The write lock: many workers upserting into one connection."""
         _db, pid, ids = seeded
         many = [row_for(i, number=200 + i) for i in ids]
         cl = make(8, lambda issue: _ok())

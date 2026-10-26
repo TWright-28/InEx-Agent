@@ -7,7 +7,6 @@ import sys
 import tokenize
 from pathlib import Path
 
-import pytest
 from conftest import ENV_VARS
 
 REPO = Path(__file__).resolve().parents[1]
@@ -207,6 +206,5 @@ def test_comment_checker_catches_comments_and_docstrings():
     assert comment_violations(Path("x.py"), 'x = "# not a comment"\n') == []
 
 
-@pytest.mark.skip(reason="enabled in Task 14")
 def test_no_comments_or_docstrings_anywhere():
     assert violations_in(python_files(), comment_violations) == []
