@@ -12,6 +12,7 @@ from inex.app import build_app
 from inex.config import load_settings
 from inex.services.classification import ClassifyPreview, ClassifyResult
 from inex.services.collection import CollectResult, CountResult
+from inex.services.imports import ImportService
 from inex.services.linkage import LinkResult
 from inex.store.database import Store
 
@@ -96,14 +97,17 @@ def seed_test_db():
     connection.close()
 
 
-def build_eval_app():
-    settings = load_settings(database=EVAL_DB, exports_dir=EVAL_DIR / "exports")
-    return replace(
+def build_eval_app(settings=None):
+    if settings is None:
+        settings = load_settings(database=EVAL_DB, exports_dir=EVAL_DIR / "exports")
+    collection, classification = FakeCollection(), FakeClassification()
+    app = replace(
         build_app(settings),
-        collection=FakeCollection(),
-        classification=FakeClassification(),
+        collection=collection,
+        classification=classification,
         linkage=FakeLinkage(),
     )
+    return replace(app, imports=ImportService(app.queries.store, collection, classification))
 
 
 _STATE = {}

@@ -26,6 +26,7 @@ EXIT_ERROR = 1
 EXIT_INTERRUPTED = 130
 STDOUT_STREAM = "ext://sys.stdout"
 STDERR_STREAM = "ext://sys.stderr"
+OUTPUT_ENCODING = "utf-8"
 
 
 def configure_logging(path):
@@ -39,6 +40,7 @@ def configure_logging(path):
             handler["stream"] = STDERR_STREAM
         filename = handler.get("filename")
         if filename:
+            handler.setdefault("encoding", OUTPUT_ENCODING)
             Path(filename).parent.mkdir(parents=True, exist_ok=True)
             log_file = log_file or filename
     logging.config.dictConfig(config)
@@ -247,7 +249,15 @@ def _report_error(args, code, message):
         print(f"error: {message}", file=sys.stderr)
 
 
+def _use_utf8_output():
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding=OUTPUT_ENCODING, errors="replace")
+
+
 def main(argv=None, build=build_app) -> int:
+    _use_utf8_output()
     parser = build_parser()
     try:
         args = parser.parse_args(argv)

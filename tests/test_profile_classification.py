@@ -29,6 +29,19 @@ def test_prompt_version_names_the_profile(inex_profile):
     assert version.endswith("+t2")
 
 
+def test_prompt_version_ignores_line_endings(tmp_path, inex_profile):
+    from inex.config import REPO_ROOT
+    from inex.services.profiles import load_profile
+
+    for name in ("inex.yaml", "inex_guide.md"):
+        text = (REPO_ROOT / "profiles" / name).read_text(encoding="utf-8")
+        (tmp_path / name).write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
+    crlf = load_profile(tmp_path / "inex.yaml")
+    lf_version = ClassificationService(None, inex_profile, "qwen3:30b", 0.2).prompt_version
+    crlf_version = ClassificationService(None, crlf, "qwen3:30b", 0.2).prompt_version
+    assert crlf_version == lf_version
+
+
 def test_profiles_get_distinct_prompt_versions(inex_profile, severity_profile):
     a = ClassificationService(None, inex_profile, "qwen3:30b", 0.2).prompt_version
     b = ClassificationService(None, severity_profile, "qwen3:30b", 0.2).prompt_version

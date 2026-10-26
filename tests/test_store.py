@@ -94,6 +94,28 @@ class TestSchema:
         assert first == again
         store.close()
 
+    def test_legacy_duplicates_are_refused_without_touching_the_file(self, tmp_path):
+        path = tmp_path / "dupes.db"
+        raw = sqlite3.connect(path)
+        raw.execute(LEGACY_CLASSIFICATIONS)
+        for _ in range(2):
+            raw.execute(
+                "INSERT INTO classifications(issue_id, classification, model, prompt_version, "
+                "temperature) VALUES (1, 'Intrinsic', 'm', 'p', 0.2)"
+            )
+        raw.commit()
+        raw.close()
+        with pytest.raises(InexError) as e:
+            Store(path)
+        assert e.value.code == "duplicate_classifications"
+        raw = sqlite3.connect(path)
+        columns = {r[1] for r in raw.execute("PRAGMA table_info(classifications)")}
+        tables = {r[0] for r in raw.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        raw.close()
+        assert "status" not in columns
+        assert "projects" not in tables
+        path.unlink()
+
     def test_paths_with_spaces_and_hash_open_both_ways(self, tmp_path):
         store = Store(tmp_path / "ICSME (2)" / "db #1.db")
         store.save_project("acme", "widget")

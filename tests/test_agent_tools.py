@@ -106,3 +106,20 @@ def test_run_sql_description_states_the_real_cap(app):
 def test_run_sql_returns_rows(app):
     out = tool(app, "run_sql").invoke({"query": "SELECT 1 AS x"})
     assert out == {"status": "ok", "columns": ["x"], "rows": [[1]], "truncated": False}
+
+
+def test_fake_app_import_service_uses_the_fakes(settings):
+    app = fake_app(settings)
+    assert app.imports.collection is app.collection
+    assert app.imports.classification is app.classification
+    app.close()
+
+
+def test_eval_app_never_reaches_real_services(settings):
+    import evals.routing as routing
+
+    app = routing.build_eval_app(settings)
+    assert isinstance(app.collection, routing.FakeCollection)
+    assert app.imports.collection is app.collection
+    assert app.imports.classification is app.classification
+    app.close()

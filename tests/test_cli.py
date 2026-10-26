@@ -1,3 +1,4 @@
+import io
 import json
 import logging
 import subprocess
@@ -169,3 +170,40 @@ def test_logs_never_reach_stdout(tmp_path, capsys):
         root.setLevel(saved_level)
     assert "progress line" not in captured.out
     assert "progress line" in captured.err
+
+
+def test_non_ascii_output_survives_a_legacy_console_encoding(cli, monkeypatch):
+    buffer = io.BytesIO()
+    stream = io.TextIOWrapper(buffer, encoding="cp1252", errors="strict")
+    monkeypatch.setattr(sys, "stdout", stream)
+    text = "title " + chr(0x2192) + " " + chr(0x1F389) + " " + chr(0x6F22) + chr(0x5B57)
+    assert cli(["query", f"SELECT '{text}' AS t"]) == 0
+    stream.flush()
+    assert text in buffer.getvalue().decode("utf-8")
+
+
+def test_log_file_is_written_as_utf8(tmp_path, monkeypatch):
+    from inex.cli import configure_logging
+
+    monkeypatch.chdir(tmp_path)
+    config = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "handlers": {"file": {"class": "logging.FileHandler", "filename": "logs/t.log"}},
+        "root": {"level": "INFO", "handlers": ["file"]},
+    }
+    path = tmp_path / "logging.json"
+    path.write_text(json.dumps(config), encoding="utf-8")
+    root = logging.getLogger()
+    saved_handlers, saved_level = root.handlers[:], root.level
+    message = "title " + chr(0x2192) + " " + chr(0x6F22) + chr(0x5B57)
+    try:
+        configure_logging(path)
+        logging.getLogger("inex.test").info(message)
+    finally:
+        for handler in root.handlers:
+            if handler not in saved_handlers:
+                handler.close()
+        root.handlers[:] = saved_handlers
+        root.setLevel(saved_level)
+    assert message in (tmp_path / "logs" / "t.log").read_text(encoding="utf-8")

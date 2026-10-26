@@ -16,6 +16,7 @@ COUNT_QUERY = (
 )
 PER_PAGE = 100
 REQUEST_TIMEOUT_SECONDS = 30
+HTTP_UNAUTHORIZED = 401
 HTTP_FORBIDDEN = 403
 HTTP_NOT_FOUND = 404
 RATE_LIMIT_BUFFER_SECONDS = 1
@@ -63,15 +64,38 @@ class CollectionService:
                 "No GitHub token is configured. Set GITHUB_TOKEN in .env.",
             )
 
+    def _github_failure(self, error, owner, repo):
+        response = getattr(error, "response", None)
+        status = getattr(response, "status_code", None)
+        if status == HTTP_NOT_FOUND:
+            return InexError(
+                "repo_not_found", f"{owner}/{repo} was not found on GitHub.", owner=owner, repo=repo
+            )
+        if status in (HTTP_UNAUTHORIZED, HTTP_FORBIDDEN):
+            return InexError(
+                "github_auth_failed",
+                f"GitHub refused the request (HTTP {status}). Check that GITHUB_TOKEN is valid "
+                "and can read this repository.",
+                status=status,
+            )
+        if isinstance(error, requests.ConnectionError | requests.Timeout):
+            return InexError(
+                "network_error", "Could not reach GitHub. Check the network connection."
+            )
+        return InexError("github_error", f"GitHub request failed: {error}")
+
     def count(self, owner, repo) -> CountResult:
         self._require_token()
-        r = requests.post(
-            GRAPHQL_URL,
-            headers=self.headers,
-            json={"query": COUNT_QUERY, "variables": {"owner": owner, "name": repo}},
-            timeout=REQUEST_TIMEOUT_SECONDS,
-        )
-        r.raise_for_status()
+        try:
+            r = requests.post(
+                GRAPHQL_URL,
+                headers=self.headers,
+                json={"query": COUNT_QUERY, "variables": {"owner": owner, "name": repo}},
+                timeout=REQUEST_TIMEOUT_SECONDS,
+            )
+            r.raise_for_status()
+        except requests.RequestException as error:
+            raise self._github_failure(error, owner, repo) from error
         repository = (r.json().get("data") or {}).get("repository")
         if not repository:
             raise InexError(
@@ -616,7 +640,7 @@ class CollectionService:
         db = self.store
         max_issues, start_date, end_date, direction = count, start, end, order
         logger.info("Starting collection for %s/%s", owner, repo)
-        projectId = db.save_project(owner, repo)
+        projectId = None
         collected = 0
         skipped = 0
         pg = 1
@@ -626,7 +650,12 @@ class CollectionService:
 
         while True:
             issuesUrl = f"https://api.github.com/repos/{owner}/{repo}/issues?state=all&sort=created&direction={direction}"
-            issues = self.get(f"{issuesUrl}&per_page={PER_PAGE}&page={pg}").json()
+            try:
+                issues = self.get(f"{issuesUrl}&per_page={PER_PAGE}&page={pg}").json()
+            except requests.RequestException as error:
+                raise self._github_failure(error, owner, repo) from error
+            if projectId is None:
+                projectId = db.save_project(owner, repo)
 
             for issue in issues:
                 if issue.get("pull_request"):

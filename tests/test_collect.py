@@ -149,3 +149,50 @@ class TestCountIssues:
             CollectionService(db, None).count("facebook", "react")
         assert e.value.code == "github_token_missing"
         assert sent == []
+
+
+def failing_get(status=None, error=None):
+    def get(url, hdrs=None):
+        if error is not None:
+            raise error
+        FakeResponse({}, status=status).raise_for_status()
+
+    return get
+
+
+class TestCollectErrors:
+    @pytest.mark.parametrize(
+        "status, code",
+        [(404, "repo_not_found"), (401, "github_auth_failed"), (403, "github_auth_failed")],
+    )
+    def test_http_errors_are_named_and_leave_no_project(self, db, monkeypatch, status, code):
+        service = CollectionService(db, "t")
+        monkeypatch.setattr(service, "get", failing_get(status=status))
+        with pytest.raises(InexError) as e:
+            service.collect("acme", "nope")
+        assert e.value.code == code
+        assert db.project_id("acme", "nope") is None
+
+    def test_network_failure_is_named(self, db, monkeypatch):
+        service = CollectionService(db, "t")
+        monkeypatch.setattr(service, "get", failing_get(error=requests.ConnectionError("down")))
+        with pytest.raises(InexError) as e:
+            service.collect("acme", "widget")
+        assert e.value.code == "network_error"
+
+    def test_count_names_network_and_auth_failures(self, db, monkeypatch):
+        def offline(url, headers=None, json=None, timeout=None):
+            raise requests.ConnectionError("down")
+
+        monkeypatch.setattr("inex.services.collection.requests.post", offline)
+        with pytest.raises(InexError) as e:
+            CollectionService(db, "t").count("facebook", "react")
+        assert e.value.code == "network_error"
+
+        def unauthorized(url, headers=None, json=None, timeout=None):
+            return FakeResponse({}, status=401)
+
+        monkeypatch.setattr("inex.services.collection.requests.post", unauthorized)
+        with pytest.raises(InexError) as e:
+            CollectionService(db, "t").count("facebook", "react")
+        assert e.value.code == "github_auth_failed"

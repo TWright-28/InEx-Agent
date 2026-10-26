@@ -54,8 +54,12 @@ class Store:
         self._connection = sqlite3.connect(self.path, check_same_thread=False)
         self._connection.row_factory = sqlite3.Row
         self._write_lock = threading.Lock()
-        with self._write_lock:
-            ensure_schema(self._connection)
+        try:
+            with self._write_lock:
+                ensure_schema(self._connection)
+        except BaseException:
+            self._connection.close()
+            raise
         self._readonly = sqlite3.connect(
             self.path.resolve().as_uri() + "?mode=ro", uri=True, check_same_thread=False
         )

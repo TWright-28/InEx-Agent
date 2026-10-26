@@ -73,7 +73,9 @@ def _labels(path, raw):
     seen_names = set()
     by_slug = {}
     for entry in raw:
-        raw_name = (entry or {}).get("name")
+        if not isinstance(entry, dict):
+            _invalid(path, f"label {entry!r} must be a mapping with a name and a description.")
+        raw_name = entry.get("name")
         if not isinstance(raw_name, str):
             _invalid(path, f"label name {raw_name!r} is not text; put it in quotes.")
         name = raw_name.strip()
@@ -82,6 +84,8 @@ def _labels(path, raw):
         if name in seen_names:
             _invalid(path, f"label {name!r} is listed twice.")
         slug = slugify(name)
+        if not slug:
+            _invalid(path, f"label {name!r} needs at least one ASCII letter or digit.")
         if slug in by_slug:
             _invalid(path, f"labels {by_slug[slug]!r} and {name!r} collide as {slug!r}.")
         seen_names.add(name)
@@ -96,12 +100,16 @@ def _reasoning(path, raw):
     steps = []
     seen = set()
     for entry in raw:
-        raw_field = (entry or {}).get("field")
+        if not isinstance(entry, dict):
+            _invalid(path, f"reasoning step {entry!r} must be a mapping with a field.")
+        raw_field = entry.get("field")
         if not isinstance(raw_field, str):
             _invalid(path, f"reasoning field {raw_field!r} is not text; put it in quotes.")
         field = raw_field.strip()
         if not field.isidentifier():
             _invalid(path, f"reasoning field {field!r} is not a valid identifier.")
+        if field.startswith("_"):
+            _invalid(path, f"reasoning field {field!r} must not start with an underscore.")
         if field in RESERVED_FIELDS:
             _invalid(path, f"reasoning field {field!r} is reserved.")
         if field in seen:
@@ -125,21 +133,28 @@ def load_profile(path: Path) -> Profile:
     if not isinstance(document, dict) or not document.get("name"):
         _invalid(path, "needs a name.")
     guide_name = document.get("guide")
-    if not guide_name:
-        _invalid(path, "needs a guide file.")
+    if not isinstance(guide_name, str) or not guide_name.strip():
+        _invalid(path, "needs a guide file name.")
     guide_path = path.parent / guide_name
     try:
         guide_text = guide_path.read_text(encoding="utf-8")
     except OSError:
         _invalid(path, f"guide file {guide_name} cannot be read.")
+    try:
+        version = int(document.get("version", 1))
+    except (TypeError, ValueError):
+        _invalid(path, f"version must be a whole number, got {document.get('version')!r}.")
     confidence = None
     if "confidence" in document:
-        confidence = tuple(str(level) for level in document["confidence"] or ())
+        levels = document["confidence"]
+        if not isinstance(levels, list) or not all(isinstance(level, str) for level in levels):
+            _invalid(path, "confidence must be a list of levels, like [High, Medium, Low].")
+        confidence = tuple(levels)
         if not confidence:
             _invalid(path, "confidence is present but empty.")
-    return Profile(
+    profile = Profile(
         name=str(document["name"]),
-        version=int(document.get("version", 1)),
+        version=version,
         description=str(document.get("description", "")),
         guide_path=guide_path,
         guide_text=guide_text,
@@ -148,6 +163,11 @@ def load_profile(path: Path) -> Profile:
         confidence=confidence,
         raw_bytes=raw_bytes,
     )
+    try:
+        build_schema(profile)
+    except Exception as error:
+        _invalid(path, f"cannot build a response schema from it: {error}")
+    return profile
 
 
 def build_schema(profile):

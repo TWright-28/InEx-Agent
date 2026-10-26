@@ -1,3 +1,5 @@
+from inex.errors import InexError
+
 TABLES = (
     """CREATE TABLE IF NOT EXISTS projects(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -96,13 +98,40 @@ INDEXES = (
 TABLE_NAMES = ("version_dependencies", "versions", "classifications", "issues", "projects")
 
 
+RUN_KEY = ("issue_id", "model", "prompt_version", "temperature")
+
+
+def _duplicate_runs(connection):
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(classifications)")}
+    if not set(RUN_KEY) <= columns:
+        return 0
+    keys = ", ".join(RUN_KEY)
+    return connection.execute(
+        f"SELECT COUNT(*) FROM (SELECT 1 FROM classifications GROUP BY {keys} HAVING COUNT(*) > 1)"
+    ).fetchone()[0]
+
+
 def ensure_schema(connection) -> None:
-    for statement in TABLES:
-        connection.execute(statement)
-    for table, column, column_type in ADDED_COLUMNS:
-        existing = {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
-        if column not in existing:
-            connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}")
-    for statement in INDEXES:
-        connection.execute(statement)
+    duplicates = _duplicate_runs(connection)
+    if duplicates:
+        raise InexError(
+            "duplicate_classifications",
+            f"This database stores {duplicates} classification runs more than once (same issue, "
+            "model, prompt version and temperature). Remove the duplicates before opening it "
+            "with InEx; nothing was changed.",
+            duplicates=duplicates,
+        )
+    connection.execute("BEGIN")
+    try:
+        for statement in TABLES:
+            connection.execute(statement)
+        for table, column, column_type in ADDED_COLUMNS:
+            existing = {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
+            if column not in existing:
+                connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}")
+        for statement in INDEXES:
+            connection.execute(statement)
+    except BaseException:
+        connection.rollback()
+        raise
     connection.commit()

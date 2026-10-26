@@ -4,6 +4,7 @@ from inex.app import build_app
 from inex.errors import InexError
 from inex.services.classification import ClassifyPreview, ClassifyResult
 from inex.services.collection import CollectResult, CountResult, SpecificResult
+from inex.services.imports import ImportService
 from inex.services.linkage import LinkResult
 
 
@@ -66,4 +67,6 @@ def fake_app(settings, **services):
         "linkage": FakeLinkage(),
     }
     defaults.update(services)
-    return replace(build_app(settings), **defaults)
+    app = replace(build_app(settings), **defaults)
+    imports = ImportService(app.queries.store, app.collection, app.classification)
+    return replace(app, imports=imports)

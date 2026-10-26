@@ -181,6 +181,28 @@ def test_unquoted_yaml_booleans_are_rejected_as_label_names(tmp_path):
     rejects(tmp_path, text, "quotes")
 
 
+MALFORMED = [
+    (
+        VALID.split("labels:")[0]
+        + "labels: [Bug, Feature]\nreasoning:"
+        + VALID.split("reasoning:")[1],
+        "label",
+    ),
+    (VALID.replace("version: 1", "version: v2"), "version"),
+    (VALID.replace("guide: guide.md", "guide: [guide.md]"), "guide"),
+    (VALID.replace("name: Accept", "name: Model Config"), "schema"),
+    (VALID.replace("field: evidence", "field: model_config"), "schema"),
+    (VALID + "confidence: High, Medium, Low\n", "confidence"),
+    (VALID.replace("field: evidence", "field: _private"), "_private"),
+    (VALID.replace("name: Accept", "name: Ошибка"), "Ошибка"),
+]
+
+
+@pytest.mark.parametrize("text, fragment", MALFORMED)
+def test_malformed_profiles_are_rejected_with_a_reason(tmp_path, text, fragment):
+    rejects(tmp_path, text, fragment)
+
+
 def test_missing_profile_file(tmp_path):
     with pytest.raises(InexError) as e:
         load_profile(tmp_path / "nope.yaml")

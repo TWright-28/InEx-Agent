@@ -185,6 +185,33 @@ class TestRaces:
         assert n == len(many)
 
 
+class TestInterrupt:
+    def test_ctrl_c_cancels_issues_that_have_not_started(self):
+        import _thread
+
+        calls = []
+        lock = threading.Lock()
+
+        def slow(issue):
+            with lock:
+                calls.append(issue["number"])
+            time.sleep(0.2)
+            return _ok()
+
+        cl = make(4, slow)
+        store = RecordingDB()
+        many = [row_for(i, number=i) for i in range(1, 41)]
+        timer = threading.Timer(0.3, _thread.interrupt_main)
+        timer.start()
+        try:
+            with pytest.raises(KeyboardInterrupt):
+                run(cl, many, store)
+        finally:
+            timer.cancel()
+        assert len(calls) < len(many)
+        assert len(calls) <= len(store.saved) + 4
+
+
 class TestResults:
     def test_classify_reports_failures_by_status(self, seeded):
         from inex.services.classification import ClassificationService, ClassifyResult, ParsedResult

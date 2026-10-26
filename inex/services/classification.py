@@ -124,8 +124,9 @@ class ClassificationService:
         self._structured = None
         self._clientLock = threading.Lock()
         self.base_prompt = profile.guide_text.strip()
+        profile_text = profile.raw_bytes.replace(b"\r\n", b"\n")
         self.prompt_hash = hashlib.sha256(
-            profile.raw_bytes + profile.guide_text.encode("utf-8")
+            profile_text + profile.guide_text.encode("utf-8")
         ).hexdigest()[:PROMPT_HASH_CHARS]
         self.prompt_version = f"{profile.name}@{self.prompt_hash}+t{TEMPLATE_VERSION}"
 
@@ -569,13 +570,18 @@ Analyze this issue using the classification guide and reasoning framework provid
 
         logger.info("Classifying %d issues across %d workers", len(rows), workers)
         done = 0
-        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="classify") as pool:
+        pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="classify")
+        try:
             futures = [pool.submit(self._classifyAndSave, owner, repo, row) for row in rows]
             for fut in as_completed(futures):
                 record(fut.result())
                 done += 1
                 if done % PROGRESS_EVERY == 0 or done == len(rows):
                     logger.info("  progress %d/%d  %s", done, len(rows), tally)
+        except BaseException:
+            pool.shutdown(wait=True, cancel_futures=True)
+            raise
+        pool.shutdown(wait=True)
         return tally
 
     def _structured_task(self):

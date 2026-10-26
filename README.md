@@ -130,8 +130,12 @@ python -m inex collect yeoman/yeoman-test --count 50
 python -m inex classify yeoman/yeoman-test --preview
 python -m inex classify yeoman/yeoman-test
 python -m inex link yeoman/yeoman-test --package yeoman-test
-python -m inex query "SELECT classification, COUNT(*) FROM classifications GROUP BY classification"
+python -m inex query "SELECT model, prompt_version, classification, COUNT(*) FROM classifications WHERE status IS NULL OR status = 'ok' GROUP BY model, prompt_version, classification"
 ```
+
+Always filter out failed attempts (`status IS NULL OR status = 'ok'`) and group or filter by
+`model` and `prompt_version`: an issue classified by two models or two prompt revisions has
+two rows.
 
 ### The chat agent
 

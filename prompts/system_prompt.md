@@ -233,8 +233,9 @@ IMPORTANT — `classifications` also holds FAILED attempts, which are not result
 - **Every query that counts or groups classifications MUST filter**
   `WHERE (status IS NULL OR status = 'ok')`, or it will report failures as data.
   A run's failure rate is `SELECT status, COUNT(*) ... GROUP BY status`.
-- `prompt_version` now identifies the prompt's *content* ("path@hash+tN"), so one
-  issue may have several rows from different prompt revisions. Pin `model` and
+- `prompt_version` identifies the profile and prompt *content*
+  ("profile@hash+tN"; older rows use "path@hash+tN"), so one issue may have several
+  rows from different profiles or prompt revisions. Pin `model` and
   `prompt_version` when comparing or aggregating, or you will double-count.
 - `argmax_label` is set when the model's own probabilities disagreed with the label
   it stated. The stated label is authoritative; report the disagreement rate if asked,

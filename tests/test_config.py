@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pytest
@@ -9,8 +10,21 @@ from inex.errors import InexError
 
 @pytest.fixture
 def clean_env(monkeypatch):
+    saved = dict(os.environ)
     for name in ENV_VARS:
         monkeypatch.delenv(name, raising=False)
+    yield
+    os.environ.clear()
+    os.environ.update(saved)
+
+
+def test_env_example_works_from_any_folder(clean_env, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    example = (REPO_ROOT / ".env.example").read_text(encoding="utf-8")
+    (tmp_path / ".env").write_text(example, encoding="utf-8")
+    settings = load_settings()
+    assert settings.profile == REPO_ROOT / "profiles" / "inex.yaml"
+    assert settings.profile.is_file()
 
 
 def test_defaults(clean_env):

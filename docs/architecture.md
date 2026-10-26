@@ -115,7 +115,9 @@ amount of code.
   schema is byte-identical to the hand-written one it replaced
   (`tests/fixtures/inex_schema.json`).
 - **What `prompt_version` identifies.** It is
-  `<profile>@<sha256(profile bytes + guide bytes)[:12]>+t<TEMPLATE_VERSION>`. The prompt
+  `<profile>@<sha256(profile text + guide text)[:12]>+t<TEMPLATE_VERSION>`, with line
+  endings normalised to LF first so a checkout that converts them (`core.autocrlf`) does
+  not change the run key; `.gitattributes` also keeps `profiles/` at LF. The prompt
   actually sent is the guide plus the issue template in `formatIssueData`, so bump
   `TEMPLATE_VERSION` whenever that template changes; hashing only the files would let the
   template drift silently. Rows classified before profiles existed carry a path-based
@@ -161,6 +163,10 @@ amount of code.
   `anthropic`, `google_genai` or `google_vertexai` goes through LangChain with structured
   output. Anything else, including tags with a colon such as `qwen3:30b`, is an Ollama
   model.
+- **Ctrl+C stops paid work.** On an interrupt the batch runner cancels every issue that has
+  not started; at most one in-flight issue per worker finishes and is saved. A plain
+  `with ThreadPoolExecutor` would wait for the whole queue, sending every remaining issue
+  to the model.
 - **One bad issue cannot stop a batch.** Each issue is classified and saved inside a guard
   that catches every `Exception` (never `KeyboardInterrupt`) and records `api_error`. If the
   save itself fails, the issue stays unclassified and the next run picks it up, which is
@@ -186,11 +192,18 @@ amount of code.
   `classifications(issue_id, model, prompt_version, temperature)`, which the upsert needs.
   Opening any database adds missing columns and `ux_classifications_run`; rows never
   change. Keep the archived corpus byte-for-byte and point the tool at a copy.
+- **The upgrade is all or nothing.** A legacy database holding the same run twice cannot
+  take the unique index, so it is refused with `duplicate_classifications` before anything
+  changes; otherwise the whole upgrade runs in one transaction.
 - **The read-only connection uses a file URI** built with `Path.as_uri()`, so paths with
   spaces, parentheses or `#` work.
 
 ### Collection
 
+- **GitHub failures have names.** A 404 is `repo_not_found`, 401 and 403 are
+  `github_auth_failed`, and a dropped connection is `network_error`. The project row is
+  saved only after the first page of issues arrives, so a mistyped repository leaves
+  nothing behind.
 - **Issue counts use GraphQL.** GitHub search answers 422 for some public repositories,
   facebook/react among them, and the GraphQL count is exact.
 - **The list request carries the requested direction.** Ascending collection with an end
@@ -216,6 +229,11 @@ amount of code.
 
 - **Logs never go to stdout.** The CLI moves any logging handler that targets stdout to
   stderr, so `--json` output stays valid JSON.
+- **Output is UTF-8.** Issue titles routinely contain arrows, emoji and CJK text. The CLI
+  switches stdout and stderr to UTF-8 (unencodable characters are replaced) and log files
+  default to UTF-8, so redirected output on Windows does not crash on them.
+- **`.env` is read from the current folder.** `.env.example` leaves `INEX_PROFILE` empty
+  so the bundled profile is used wherever the tool runs.
 - **Agent tools keep their names.** The nine tool names match `prompts/system_prompt.md`
   and the routing evaluation in `evals/routing.py`, whose ten scenarios are documented in
   `agent_routing_validation.tex`.
