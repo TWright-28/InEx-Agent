@@ -74,8 +74,7 @@ def collector(monkeypatch):
 
 
 def saved_in_order(db):
-    db.cursor.execute("SELECT issue_number FROM issues ORDER BY id")
-    return [r[0] for r in db.cursor.fetchall()]
+    return [r[0] for r in db.fetch_readonly("SELECT issue_number FROM issues ORDER BY id")[1]]
 
 
 class TestCollectDirection:

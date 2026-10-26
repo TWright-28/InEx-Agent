@@ -1,28 +1,25 @@
 import csv
 import json
 import os
-import sqlite3
 from datetime import datetime
 
-from config import DB_PATH
+from inex.errors import InexError
 
 # optional, can modify. setting to 50 since we in CLI
 MAX_SQL_ROWS = 50
 
-ro_conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True, check_same_thread=False)
 
-
-def describeSchema() -> dict:
-    cur = ro_conn.cursor()
-    cur.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+def describeSchema(store) -> dict:
     tables = {}
-    for (name,) in cur.fetchall():
-        cur.execute(f"PRAGMA table_info({name})")
-        tables[name] = [{"name": c[1], "type": c[2]} for c in cur.fetchall()]
+    for (name,) in store.fetch_readonly(
+        "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+    )[1]:
+        columns = store.fetch_readonly(f"PRAGMA table_info({name})")[1]
+        tables[name] = [{"name": c[1], "type": c[2]} for c in columns]
     return {"status": "ok", "tables": tables}
 
 
-def runSql(query: str) -> dict:
+def runSql(store, query: str) -> dict:
     q = query.strip().rstrip(";").strip()
     low = q.lower()
 
@@ -42,12 +39,9 @@ def runSql(query: str) -> dict:
         q = f"{q} LIMIT {MAX_SQL_ROWS}"
 
     try:
-        cur = ro_conn.cursor()
-        cur.execute(q)
-        cols = [d[0] for d in cur.description] if cur.description else []
-        rows = cur.fetchmany(MAX_SQL_ROWS)
-    except sqlite3.Error as e:
-        return {"status": "error", "code": "sql_error", "message": str(e)}
+        cols, rows = store.run_readonly(q, MAX_SQL_ROWS)
+    except InexError as e:
+        return {"status": "error", "code": e.code, "message": e.message}
 
     lines = [" | ".join(cols)]
     lines.append("-" * len(lines[0]))
@@ -58,7 +52,7 @@ def runSql(query: str) -> dict:
     return "\n".join(lines)
 
 
-def exportQuery(query: str, fmt: str = "csv", filename: str = None) -> dict:
+def exportQuery(store, query: str, fmt: str = "csv", filename: str = None) -> dict:
     q = query.strip().rstrip(";").strip()
     low = q.lower()
 
@@ -88,12 +82,9 @@ def exportQuery(query: str, fmt: str = "csv", filename: str = None) -> dict:
         }
 
     try:
-        cur = ro_conn.cursor()
-        cur.execute(q)
-        cols = [d[0] for d in cur.description] if cur.description else []
-        rows = cur.fetchall()
-    except sqlite3.Error as e:
-        return {"status": "error", "code": "sql_error", "message": str(e)}
+        cols, rows = store.fetch_readonly(q)
+    except InexError as e:
+        return {"status": "error", "code": e.code, "message": e.message}
 
     os.makedirs("exports", exist_ok=True)
     if not filename:

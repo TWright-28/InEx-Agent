@@ -33,9 +33,9 @@ def db_path(tmp_path):
 
 @pytest.fixture
 def db(db_path):
-    from tools.helpers.database import InExTool
+    from inex.store.database import Store
 
-    return InExTool(db_path)
+    return Store(db_path)
 
 
 @pytest.fixture

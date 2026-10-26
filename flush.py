@@ -1,19 +1,7 @@
-import sqlite3
-
 from config import DB_PATH
+from inex.store.database import Store
 
-conn = sqlite3.connect(DB_PATH)
-cur = conn.cursor()
-
-cur.executescript("""
-    DELETE FROM version_dependencies;
-    DELETE FROM versions;
-    DELETE FROM classifications;
-    DELETE FROM issues;
-    DELETE FROM projects;
-    DELETE FROM sqlite_sequence;
-""")
-
-conn.commit()
-conn.close()
+store = Store(DB_PATH)
+store.clear()
+store.close()
 print("Database flushed.")

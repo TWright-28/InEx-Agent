@@ -23,7 +23,7 @@ def _ok():
 
 
 class RecordingDB:
-    """Stands in for InExTool, capturing writes from whichever thread makes them."""
+    """Stands in for Store, capturing writes from whichever thread makes them."""
 
     def __init__(self):
         self.saved = []
@@ -185,7 +185,7 @@ class TestRaces:
         cl = make(8, lambda issue: _ok())
         tally = cl._classifyRows("acme", "widget", many, _db)
         assert tally == {"ok": len(many)}
-        n = _db.cursor.execute("SELECT COUNT(*) FROM classifications").fetchone()[0]
+        n = _db.fetch_readonly("SELECT COUNT(*) FROM classifications")[1][0][0]
         assert n == len(many)
 
 

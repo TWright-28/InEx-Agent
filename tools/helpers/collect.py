@@ -493,12 +493,9 @@ class Collect:
         issueIds = []
 
         for num in numbers:
-            db.cursor.execute(
-                "SELECT id FROM issues WHERE project_id = ? AND issue_number = ?", (projectId, num)
-            )
-            row = db.cursor.fetchone()
-            if row:
-                issueIds.append(row[0])
+            existing = db.issue_id(projectId, num)
+            if existing:
+                issueIds.append(existing)
                 skipped += 1
                 continue
 
@@ -566,11 +563,7 @@ class Collect:
                         return self._finish(owner, repo, collected, skipped)
 
                 num = issue.get("number")
-                db.cursor.execute(
-                    "SELECT id FROM issues WHERE project_id = ? AND issue_number = ?",
-                    (projectId, num),
-                )
-                if db.cursor.fetchone():
+                if db.issue_id(projectId, num):
                     skipped += 1
                     continue
 

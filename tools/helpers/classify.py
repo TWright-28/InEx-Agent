@@ -613,7 +613,7 @@ DO NOT REPEAT RAW FILE PATHS OR FULL STACK TRACE OUTPUTS.
                 model=self.model_config["model_name"],
                 prompt=self.prompt_version,
                 temp=self.model_config["temperature"],
-                classifiedat=datetime.now().isoformat(),
+                classified_at=datetime.now().isoformat(),
             )
         except Exception:
             # The row is lost but the run continues; it stays unclassified and is
@@ -671,14 +671,12 @@ DO NOT REPEAT RAW FILE PATHS OR FULL STACK TRACE OUTPUTS.
     def classifyAll(self, owner, repo, db, max_issues=None, start=None, end=None, direction="desc"):
         logger.info("Starting classification for %s/%s", owner, repo)
 
-        db.cursor.execute("SELECT id from projects where owner = ? and repo = ?", (owner, repo))
-        row = db.cursor.fetchone()
-        if not row:
+        projectId = db.project_id(owner, repo)
+        if projectId is None:
             return f"Project {owner}/{repo} not found in database."
-        projectId = row[0]
 
         model, promptVersion, temp = self._runKey()
-        unclassified = db.getUnclassifiedInWindow(
+        unclassified = db.unclassified_in_window(
             projectId, model, promptVersion, temp, start, end, direction, max_issues
         )
         if not unclassified:
@@ -694,7 +692,7 @@ DO NOT REPEAT RAW FILE PATHS OR FULL STACK TRACE OUTPUTS.
             "Starting classification of %d specific issues for %s/%s", len(issue_ids), owner, repo
         )
 
-        rows = db.getIssuesByIds(issue_ids, *self._runKey())
+        rows = db.unclassified_by_ids(issue_ids, *self._runKey())
         if not rows:
             return f"No unclassified issues found among the given ids for {owner}/{repo}."
 
@@ -706,19 +704,14 @@ DO NOT REPEAT RAW FILE PATHS OR FULL STACK TRACE OUTPUTS.
     def previewClassification(
         self, owner, repo, db, max_count=None, start=None, end=None, direction="desc"
     ):
-        db.cursor.execute("SELECT id FROM projects WHERE owner=? AND repo=?", (owner, repo))
-        row = db.cursor.fetchone()
-
-        if not row:
+        project_id = db.project_id(owner, repo)
+        if project_id is None:
             return {"status": "error", "code": "project_not_found", "owner": owner, "repo": repo}
 
-        project_id = row[0]
         model, promptVersion, temp = self._runKey()
         # would_classify is capped by max_count; total_remaining is the real backlog.
-        total_remaining = db.countUnclassifiedInWindow(
-            project_id, model, promptVersion, temp, start, end
-        )
-        rows = db.getUnclassifiedInWindow(
+        total_remaining = db.count_unclassified(project_id, model, promptVersion, temp, start, end)
+        rows = db.unclassified_in_window(
             project_id, model, promptVersion, temp, start, end, direction, max_count
         )
         if not rows:

@@ -56,7 +56,7 @@ class DependencySnapshotter:
         self.session = requests.Session()
 
     def resolve_package_name(self, db, project_id, npm_package):
-        cached = db.getPackageName(project_id)
+        cached = db.package_name(project_id)
         if cached and cached == npm_package:
             return cached
 
@@ -65,7 +65,7 @@ class DependencySnapshotter:
             logger.warning("npm registry has no package %r", npm_package)
             return None
 
-        db.setPackageName(project_id, npm_package)
+        db.set_package_name(project_id, npm_package)
         return npm_package
 
     def _live_version_at(self, issue_created_at, versions_with_times):
@@ -187,7 +187,7 @@ class DependencySnapshotter:
             "devDependencies": dev,
         }
 
-        version_id = db.saveVersion(
+        version_id = db.save_version(
             project_id, package_name, version, published_at, counts, raw_manifest
         )
 
@@ -220,14 +220,11 @@ class DependencySnapshotter:
         version_start = _clean(version_start)
         version_end = _clean(version_end)
 
-        cur = db.connection.cursor()
-        cur.execute("SELECT id FROM projects WHERE owner = ? AND repo = ?", (owner, repo))
-        row = cur.fetchone()
-        if not row:
+        project_id = db.project_id(owner, repo)
+        if project_id is None:
             return {"status": "error", "code": "project_not_found", "owner": owner, "repo": repo}
-        project_id = row[0]
 
-        if not db.projectHasClassifications(project_id):
+        if not db.project_has_classifications(project_id):
             return {"status": "error", "code": "no_classifications", "owner": owner, "repo": repo}
 
         package_name = self.resolve_package_name(db, project_id, npm_package)
@@ -255,7 +252,7 @@ class DependencySnapshotter:
         versions_desc = sortVersionsDesc(all_versions)
         versions_with_times = [(v, time_map.get(v)) for v in versions_desc]
 
-        issues = db.getClassificationIssueWindow(project_id, start, end)
+        issues = db.classified_issue_window(project_id, start, end)
         if not issues:
             return {
                 "status": "error",
@@ -277,7 +274,7 @@ class DependencySnapshotter:
 
         def ensure_version(version, published_at):
             nonlocal snapshotted
-            vid = db.getVersionByString(project_id, version)
+            vid = db.version_id(project_id, version)
             if vid is None:
                 vid = self._snapshot_version(
                     db, project_id, package_name, version, published_at, versions_map
@@ -303,7 +300,7 @@ class DependencySnapshotter:
 
         extra = 0
         for version in slice_versions:
-            if db.getVersionByString(project_id, version) is None:
+            if db.version_id(project_id, version) is None:
                 self._snapshot_version(
                     db, project_id, package_name, version, time_map.get(version), versions_map
                 )

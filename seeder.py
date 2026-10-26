@@ -3,7 +3,7 @@ import json
 import sys
 
 from config import DB_PATH
-from tools.helpers.database import InExTool
+from inex.store.database import Store
 
 target = sys.argv[1] if len(sys.argv) > 1 else None
 
@@ -22,7 +22,7 @@ if not files:
     print(f"No .jsonl files found in {target}")
     sys.exit(1)
 
-db = InExTool(DB_PATH)
+db = Store(DB_PATH)
 
 total_loaded = 0
 total_classified = 0
@@ -50,10 +50,7 @@ for filepath in files:
             issue_id = db.save_issue(project_id, data)
 
             if data.get("classification"):
-                db.cursor.execute(
-                    "SELECT COUNT(*) FROM classifications WHERE issue_id = ?", (issue_id,)
-                )
-                if db.cursor.fetchone()[0] == 0:
+                if not db.has_classification(issue_id):
                     db.save_classification(issue_id, data)
                     classified += 1
 

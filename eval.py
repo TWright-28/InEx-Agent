@@ -80,10 +80,9 @@ VALUES
 
 
 def seed_test_db():
-    from tools.helpers.database import InExTool
+    from inex.store.database import Store
 
-    db = InExTool("db/eval_test.db")
-    db.connection.close()
+    Store("db/eval_test.db").close()
     conn = sqlite3.connect("db/eval_test.db")
     conn.executescript(SEED_SQL)
     conn.commit()

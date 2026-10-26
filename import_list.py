@@ -33,9 +33,9 @@ args = [a for a in args if a != "--no-classify"]
 csv_path = args[0] if args else "issues.csv"
 
 # Create the schema/file before read-only consumers (sqlQuery) import.
-from tools.helpers.database import InExTool
+from inex.store.database import Store
 
-InExTool(db_path)
+Store(db_path).close()
 
 from tools.langchain_tools import import_issue_list
 

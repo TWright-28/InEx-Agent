@@ -1,4 +1,3 @@
-import sqlite3
 from collections import defaultdict
 
 from langchain.tools import tool
@@ -12,19 +11,18 @@ from config import (
     classifyWorkers,
     temperature,
 )
+from inex.store.database import Store
 from tools.core.dependencies import DependencySnapshotter
 from tools.helpers.classify import Classify
 from tools.helpers.collect import Collect
-from tools.helpers.database import InExTool
 from tools.helpers.issueList import parseIssueListCsv
 from tools.helpers.sqlQuery import MAX_SQL_ROWS, describeSchema, exportQuery, runSql
 
-db = InExTool(DB_PATH)
+db = Store(DB_PATH)
 cl = Classify(
     classifier, temperature, classifyPrompt, workers=classifyWorkers, retry_attempts=classifyRetries
 )
 snap = DependencySnapshotter()
-ro_conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True, check_same_thread=False)
 
 
 @tool(
@@ -133,7 +131,7 @@ def snapshot_dependencies(
     ),
 )
 def describe_schema() -> dict:
-    return describeSchema()
+    return describeSchema(db)
 
 
 @tool(
@@ -144,7 +142,7 @@ def describe_schema() -> dict:
     ),
 )
 def run_sql(query: str) -> dict:
-    return runSql(query)
+    return runSql(db, query)
 
 
 @tool(
@@ -182,16 +180,8 @@ def preview_issue_list(csv_path: str, column: str = None) -> dict:
     repos = []
     total_already = 0
     for (owner, repo), nums in sorted(by_repo.items()):
-        db.cursor.execute("SELECT id FROM projects WHERE owner=? AND repo=?", (owner, repo))
-        row = db.cursor.fetchone()
-        already = 0
-        if row:
-            placeholders = ",".join("?" * len(nums))
-            db.cursor.execute(
-                f"SELECT COUNT(*) FROM issues WHERE project_id=? AND issue_number IN ({placeholders})",
-                [row[0], *nums],
-            )
-            already = db.cursor.fetchone()[0]
+        project_id = db.project_id(owner, repo)
+        already = db.count_existing_issues(project_id, nums) if project_id else 0
         total_already += already
         repos.append({"repo": f"{owner}/{repo}", "issues": len(nums), "already_in_db": already})
 
@@ -244,13 +234,9 @@ def import_issue_list(csv_path: str, column: str = None, classify: bool = True) 
             # Scope the count to this run's model/prompt/temperature and to rows that
             # actually succeeded, otherwise legacy rows and failed attempts are both
             # reported as newly classified.
-            db.cursor.execute(
-                "SELECT COUNT(*) FROM classifications c JOIN issues i ON i.id=c.issue_id "
-                "WHERE i.project_id=? AND c.model=? AND c.prompt_version=? AND c.temperature=? "
-                "AND c.status='ok' AND i.issue_number IN ({})".format(",".join("?" * len(nums))),
-                [project_id, classifier, cl.prompt_version, temperature, *nums],
+            classified = db.count_ok_classifications(
+                project_id, nums, classifier, cl.prompt_version, temperature
             )
-            classified = db.cursor.fetchone()[0]
 
         totals["collected"] += collected
         totals["skipped"] += skipped
@@ -282,4 +268,4 @@ def import_issue_list(csv_path: str, column: str = None, classify: bool = True) 
     ),
 )
 def export_data(query: str, format: str = "csv", filename: str = None) -> dict:
-    return exportQuery(query, format, filename)
+    return exportQuery(db, query, format, filename)
