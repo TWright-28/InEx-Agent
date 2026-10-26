@@ -1,74 +1,54 @@
-# InEx Bug Agent
+# InEx
 
-An agentic, conversational tool for collecting, classifying, and analyzing GitHub bug reports from the npm ecosystem. It exists to study a single research question:
+A tool for collecting, classifying and analysing GitHub bug reports from the npm ecosystem.
+It was built to study one research question:
 
-> **Do projects with more — or different kinds of — dependencies tend to produce more _Extrinsic_ bugs?**
+> **Do projects with more, or different kinds of, dependencies tend to produce more bugs whose root cause lies outside the project?**
 
-You talk to the tool in plain language ("collect issues from `yeoman/yeoman-test`", "classify them", "what's the Intrinsic/Extrinsic breakdown?"). An LLM orchestrator decides which tools to call, runs them against a local SQLite database, and reasons over the results.
+InEx collects issues together with the evidence that explains them (maintainer comments,
+the closing pull request or commit), classifies each issue with an LLM against a
+configurable taxonomy, and links each issue to the npm release that was live when it was
+filed. Everything is available from a command line, and the same operations are available
+to a chat agent.
 
 ---
 
 ## Concepts
 
-The database is organized around five record types:
+The database holds five kinds of record:
 
-| Record             | What it is                                                                 |
-| ------------------ | -------------------------------------------------------------------------- |
-| **Project**        | A GitHub repository (`owner/repo`), optionally with an npm package name.   |
-| **Issue**          | A single GitHub bug report belonging to a project.                         |
-| **Classification** | A label on an issue: `Intrinsic`, `Extrinsic`, `Not-a-Bug`, or `Unknown`.  |
-| **Version**        | One published npm release of a project, with the dependencies it declared. |
-| **Dependency**     | A `direct`, `peer`, or `dev` dependency belonging to a version.            |
+| Record | What it is |
+|---|---|
+| **Project** | A GitHub repository (`owner/repo`), optionally with an npm package name. |
+| **Issue** | A single GitHub issue, with its comments, closing PR or commit, and timing metrics. |
+| **Classification** | One label for an issue from the active profile, plus the model's reasoning, probabilities and run key (model, prompt version, temperature). |
+| **Version** | One published npm release of a project, with the dependencies it declared. |
+| **Dependency** | A `direct`, `peer` or `dev` dependency of a version. |
 
-**The three classification labels:**
+### Classification profiles
 
-- **Intrinsic** — root cause is _inside_ the repo (a logic error, missing validation, regression from its own code).
-- **Extrinsic** — root cause is _outside_ the repo (a dependency, runtime, or toolchain change the repo had to adapt to).
-- **Not-a-Bug** — not a defect in production code (usage questions, docs, feature requests, test/CI issues, user misconfiguration).
-- **Unknown** — insufficient information to classify confidently.
+A profile (`profiles/*.yaml`) names the labels, the reasoning steps the model must work
+through, and the guide it reads. The default profile, `profiles/inex.yaml`, is the InEx
+taxonomy:
 
-Each classified issue is linked to the npm version that was the latest release at the time the issue was filed, so dependency counts can be compared against bug type.
+- **Intrinsic**: the root cause is inside the repository.
+- **Extrinsic**: the root cause is outside the repository (a dependency, runtime or toolchain change).
+- **Not a Bug**: not a defect in production code.
+- **Unknown**: not enough information to classify.
 
----
+`profiles/example-severity.yaml` shows a different taxonomy (Critical / Major / Minor).
+To add your own, copy a profile and its guide, change the labels and reasoning steps, and
+select it with `--profile` or `INEX_PROFILE`. A broken profile is rejected when the tool
+starts, before any work.
 
-## How it works
+Each run is identified by its model, temperature and prompt version
+(`<profile>@<hash of the profile and guide>+t<template version>`), so results from
+different profiles, models or prompt revisions sit side by side and never overwrite each
+other. Classifications made before profiles existed carry a path-based prompt version and
+show as unclassified under the new scheme.
 
-```
-You (natural language)
-        │
-        ▼
-  Orchestrator LLM  ──────────────►  Tools  ──────────►  SQLite DB
- (config.orchestrator)                                  (db/*.db)
-        │
-        ├─ count_issues / collect_all      ── GitHub API
-        ├─ preview_classification / classify_all ── Classifier LLM (local Ollama)
-        ├─ snapshot_dependencies           ── npm registry
-        └─ run_sql / export_data           ── read-only analysis
-```
-
-The **orchestrator** is the model you chat with; it routes requests to tools. The **classifier** is a separate, locally-run model (via Ollama) that labels each issue. The two are configured independently in [config.py](config.py).
-
-### The standard workflow
-
-1. **`collect_all`** — pull issues from a GitHub repo into the database.
-2. **`classify_all`** — label each collected issue (one LLM call per issue; slow).
-3. **`snapshot_dependencies`** — fetch npm data, find the version live when each issue was filed, and link issues to versions.
-
-After step 3 the data is ready for analysis via `run_sql` or `export_data`.
-
-The agent confirms before expensive work: unbounded collection on a large repo (`count_issues` ≥ 1000) and any `classify_all` run (after showing a `preview_classification`) require user confirmation.
-
-### Available tools
-
-| Tool                     | Purpose                                                                     |
-| ------------------------ | --------------------------------------------------------------------------- |
-| `count_issues`           | Count a repo's issues without collecting them.                              |
-| `collect_all`            | Collect issues from a repo (filter by count / date / direction).            |
-| `preview_classification` | Show what `classify_all` _would_ classify — count, date span, sample. Fast. |
-| `classify_all`           | Classify unclassified issues. Resumable in batches.                         |
-| `snapshot_dependencies`  | Fetch npm versions + dependencies and link issues to them.                  |
-| `run_sql`                | Run a read-only `SELECT` for analysis.                                      |
-| `export_data`            | Export a `SELECT` to CSV/JSON in `exports/`.                                |
+A failed model call is never stored as a label: it is recorded with its status and retried
+on the next run.
 
 ---
 
@@ -77,111 +57,100 @@ The agent confirms before expensive work: unbounded collection on a large repo (
 ### Prerequisites
 
 - **Python 3.11+**
-- **[Ollama](https://ollama.com/)** running locally, for the classifier model (and optionally the orchestrator).
-- A **GitHub personal access token** (for collecting issues).
-- Optionally a cloud LLM API key (OpenAI / Anthropic / Google) if you don't want to run the orchestrator locally.
+- A **GitHub personal access token** for collecting issues.
+- A model: either a cloud API key (Google, OpenAI or Anthropic) or
+  **[Ollama](https://ollama.com/)** running locally.
 
 ### Install
 
-```powershell
+```bash
 python -m venv venv
-.\venv\Scripts\Activate.ps1          # PowerShell
+./venv/Scripts/activate          # Windows; use venv/bin/activate elsewhere
 pip install -r requirements.txt
-```
-
-Pull the classifier model with Ollama (default is `qwen2.5:7b-instruct`):
-
-```powershell
-ollama pull qwen2.5:7b-instruct
+pip install -r requirements-dev.txt   # ruff, for development
 ```
 
 ### Configure
 
-Create a `.env` file in the project root:
+Copy `.env.example` to `.env` and fill in what you need. Every setting can also be passed
+on the command line (`--db`, `--classifier`, `--profile`).
 
-```ini
-GITHUB_TOKEN=ghp_your_token_here
-DATABASE_URL=db/database.db
+| Variable | Default | Meaning |
+|---|---|---|
+| `DATABASE_URL` | `db/database.db` | SQLite database file |
+| `GITHUB_TOKEN` | none | Required for `count`, `collect` and `import` |
+| `INEX_CLASSIFIER` | `google_genai:gemini-2.5-pro` | Model that classifies issues |
+| `INEX_ORCHESTRATOR` | `google_genai:gemini-2.5-flash` | Model behind the chat agent |
+| `INEX_TEMPERATURE` | `0.2` | Sampling temperature for both |
+| `INEX_WORKERS` | `8` | Issues classified in parallel (use 1 for a local Ollama model) |
+| `INEX_RETRIES` | `5` | Attempts per issue before it is recorded as failed |
+| `INEX_PROFILE` | `profiles/inex.yaml` | Classification profile |
+| `OLLAMA_BASE` | `http://localhost:11434` | Ollama server |
+| `INEX_NUM_CTX` | `131072` | Context window for an Ollama orchestrator |
 
-# Only needed if the orchestrator uses a cloud provider:
-GOOGLE_API_KEY=...
-# OPENAI_API_KEY=...
-# ANTHROPIC_API_KEY=...
+Model names are `provider:model` for cloud models and a bare Ollama tag for local ones:
 
-# Optional: LangSmith tracing / evaluation
-LANGCHAIN_TRACING=true
-LANGCHAIN_API_KEY=...
-LANGCHAIN_PROJECT=...
-```
-
-Then choose your models in [config.py](config.py):
-
-```python
-# Orchestrator — the model you chat with. "provider:model"
-orchestrator = "ollama:gpt-oss:20B"
-# orchestrator = "openai:gpt-4o"
-# orchestrator = "anthropic:claude-sonnet-4-6"
-# orchestrator = "google_genai:gemini-2.5-flash"
-
-# Classifier — always runs locally via Ollama
-classifier = "qwen2.5:7b-instruct"
-```
-
-### Initialize the database
-
-```powershell
-python wipe.py     # drops and rebuilds the schema (destructive)
-```
+| Example | Runs on |
+|---|---|
+| `google_genai:gemini-2.5-pro`, `google_genai:gemini-2.5-flash` | Google (`GOOGLE_API_KEY`) |
+| `openai:gpt-4o` | OpenAI (`OPENAI_API_KEY`) |
+| `anthropic:claude-sonnet-4-6` | Anthropic (`ANTHROPIC_API_KEY`) |
+| `qwen3:30b`, `qwen2.5:7b-instruct` | Ollama, locally (`ollama pull qwen3:30b` first) |
+| `ollama:gpt-oss:20B` | Ollama, as the chat orchestrator |
 
 ---
 
 ## Usage
 
-Start the interactive agent:
-
-```powershell
-python agent.py
+```bash
+python -m inex [--db PATH] [--classifier MODEL] [--profile PATH] [--json] COMMAND
 ```
 
-You'll get a prompt. Type requests in plain language; type `q` to quit.
+| Command | What it does |
+|---|---|
+| `count OWNER/REPO` | Count a repository's issues on GitHub without collecting them |
+| `collect OWNER/REPO [--count N] [--since DATE] [--until DATE] [--oldest-first]` | Collect issues and their evidence into the database |
+| `classify OWNER/REPO [same window options] [--preview]` | Classify collected issues; `--preview` shows what would be classified |
+| `link OWNER/REPO --package NAME [--since DATE] [--until DATE]` | Link each classified issue to the npm release live when it was filed |
+| `import LIST.csv [--column NAME] [--collect-only] [--preview]` | Collect and classify a CSV of `owner/repo#number` references |
+| `load FILE_OR_DIR --model M --prompt-version P [--temperature T]` | Load issues and labels from JSONL files |
+| `query "SELECT ..."` | Run a read-only query (first 50 rows) |
+| `export "SELECT ..." [--format csv\|json] [--name NAME]` | Export a query to `exports/` |
+| `chat` | Talk to the agent |
+| `db init` / `db reset --yes` / `db clear --yes` | Create, rebuild or empty the database |
 
+`--json` prints every result as JSON, for scripts and notebooks. Errors exit with code 1,
+usage errors with 2, and Ctrl+C with 130.
+
+A typical session:
+
+```bash
+python -m inex count yeoman/yeoman-test
+python -m inex collect yeoman/yeoman-test --count 50
+python -m inex classify yeoman/yeoman-test --preview
+python -m inex classify yeoman/yeoman-test
+python -m inex link yeoman/yeoman-test --package yeoman-test
+python -m inex query "SELECT classification, COUNT(*) FROM classifications GROUP BY classification"
 ```
-InEx Bug Agent - Thread a1b2c3d4 - type 'q' to quit
-You: collect the 50 most recent issues from yeoman/yeoman-test
-You: classify them
-You: get the dependency snapshot for yeoman/yeoman-test using the npm package yeoman-test
-You: what's the Intrinsic/Extrinsic breakdown, and how do dependency counts differ between them?
-You: export the classification data to a csv
-```
 
-Conversation state is checkpointed in `db/checkpoints.db`, so the agent remembers context across turns within a session.
+### The chat agent
 
-### Loading existing data
-
-If you already have collected/classified issues as JSONL (see [data/](data/)), seed them directly:
-
-```powershell
-python seeder.py data/                     # load every .jsonl in a directory
-python seeder.py data/yeoman_merged.jsonl  # or a single file
-```
+`python -m inex chat` starts a conversation with an orchestrator model that has the same
+operations as tools. It counts a repository before an open-ended collection, previews
+before classifying, and asks for confirmation before slow work. Conversation history is
+kept in `db/checkpoints.db`.
 
 ---
 
 ## Analysis patterns
 
-The system is tuned for these questions (the agent will run patterns 1–2 automatically when you ask it to "analyse" a project):
+The agent runs patterns 1 and 2 when asked to "analyse" a project, and offers the rest:
 
-1. **Classification breakdown** — counts of Intrinsic / Extrinsic / Not-a-Bug / Unknown.
-2. **Dependency counts by classification** — avg direct/peer/dev deps for Intrinsic vs Extrinsic issues _(the core research question)_.
-3. **Issue-level detail** — each issue with its classification, version, and dependency counts.
-4. **Cross-project comparison** — Extrinsic count and percentage per project.
-5. **Modeled Extrinsic odds** (Wright et al.) — per-dependency odds ratio of 1.011; for a version with _N_ direct deps, `odds_increase_pct = (1.011^N − 1) × 100`. Reported as a modeled estimate.
-
----
-
-## GitHub Action: live issue classification
-
-[.github/workflows/issue-classify.yml](.github/workflows/issue-classify.yml) runs an AI classification whenever an issue is opened or closed in the repo, posting the result as a comment. New issues get an initial classification (title/body/labels only); closed issues get a final one using full context (maintainer comments + closing PR). It calls Groq and requires a `GROQ_API_KEY` repo secret, and only runs for `OWNER`/`MEMBER`/`COLLABORATOR` authors to protect API credits.
+1. **Classification breakdown**: the count of each label.
+2. **Dependency counts by classification**: average direct, peer and dev dependencies per label (the core research question).
+3. **Issue-level detail**: each issue with its classification, version and dependency counts.
+4. **Cross-project comparison**: the count and share of each label per project.
+5. **Modeled odds (InEx profile only)**: per-dependency odds ratio of 1.011 for a dependency-caused bug (Wright et al.); for a version with N direct dependencies, `odds_increase_pct = (1.011^N - 1) * 100`, reported as a modeled estimate.
 
 ---
 
@@ -189,43 +158,55 @@ The system is tuned for these questions (the agent will run patterns 1–2 autom
 
 ```
 projects(id, owner, repo, package_name, added_at)
-issues(id, project_id, issue_number, title, body, state, created_at, version_id, ...)
-classifications(id, issue_id, classification, model, prompt_version, temperature, classified_at, ...)
-versions(id, project_id, package_name, version, published_at, direct_count, peer_count, dev_count, snapshotted_at, ...)
-version_dependencies(version_id, dep_name, dep_kind, dep_version_range, depth, ...)
+issues(id, project_id, issue_number, title, body, state, state_reason, created_at, closed_at, version_id, raw_data, ...)
+classifications(id, issue_id, classification, classification_probabilities, model, prompt_version, temperature,
+                classified_at, status, error, validation_flags, argmax_label, attempts)
+versions(id, project_id, package_name, version, published_at, direct_count, peer_count, dev_count, ...)
+version_dependencies(version_id, dep_name, dep_kind, dep_version_range, ...)
 ```
 
-**Key joins:** `issues.project_id → projects.id`, `classifications.issue_id → issues.id`, `issues.version_id → versions.id`, `version_dependencies.version_id → versions.id`.
+Every query that counts classifications should filter `status IS NULL OR status = 'ok'`:
+failed attempts are rows too. Opening an older database adds any missing columns and
+indexes without changing rows; keep archived databases as they are and work on a copy.
 
 ---
 
 ## Project layout
 
 ```
-agent.py                  Interactive CLI entry point
-config.py                 Model selection, paths, env loading
-eval.py                   LangSmith evaluation of agent tool-routing
-seeder.py                 Load issues/classifications from JSONL
-wipe.py                   Drop & rebuild the database schema (destructive)
-flush.py                  Delete all rows, keep the schema
-prompts/
-  system_prompt.md        Orchestrator instructions
-  classification_prompt.md Classifier guide (Intrinsic/Extrinsic/Not-a-Bug/Unknown)
-tools/
-  langchain_tools.py      The seven LangChain @tool definitions
-  helpers/                collect, classify, database, sqlQuery
-  core/                   dependencies, npm_registry
-data/                     Pre-collected issue datasets (JSONL)
-exports/                  Generated CSV/JSON exports
-db/                       SQLite databases & checkpoints
+inex/
+  cli.py, __main__.py   Command line (python -m inex)
+  agent/                Chat agent: tools and orchestrator
+  app.py                build_app: wires the store, clients and services
+  config.py             Settings, read from .env and flags
+  validators.py         Input checks shared by both front ends
+  errors.py             InexError
+  services/             collection, classification, profiles, linkage, imports, queries, maintenance
+  store/                SQLite schema and every query
+  clients/              npm registry client
+profiles/               Classification profiles and their guides
+prompts/                The chat agent's system prompt
+evals/                  Agent routing evaluation (LangSmith)
+tests/                  Test suite
+docs/architecture.md    Layers, standards, and the reasoning behind non-obvious code
+check.py                Format check, lint and tests
 ```
 
 ---
 
-## Maintenance scripts
+## Development
 
-| Script            | Effect                                                                        |
-| ----------------- | ----------------------------------------------------------------------------- |
-| `python wipe.py`  | **Destructive.** Drops all tables and recreates the schema.                   |
-| `python flush.py` | Deletes all rows but keeps the schema.                                        |
-| `python eval.py`  | Runs the LangSmith tool-routing evaluation suite (requires LangSmith config). |
+```bash
+python check.py
+```
+
+runs the format check, lint and the test suite; it is the gate for every change. The rules
+it enforces (layering, no environment access outside `config.py`, nothing at import time,
+no comments) are described in [docs/architecture.md](docs/architecture.md).
+
+## GitHub Action
+
+[.github/workflows/issue-classify.yml](.github/workflows/issue-classify.yml) classifies
+issues as they are opened or closed and posts the result as a comment. It calls Groq with
+its own three-label prompt and does not use profiles yet; see "Decisions still open" in
+`docs/architecture.md`.
