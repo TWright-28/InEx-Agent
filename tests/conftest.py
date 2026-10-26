@@ -23,6 +23,19 @@ sqlite3.connect(os.environ["DATABASE_URL"]).close()
 
 PROMPT = str(ROOT / "prompts" / "classification_prompt.md")
 
+ENV_VARS = [
+    "DATABASE_URL",
+    "GITHUB_TOKEN",
+    "INEX_ORCHESTRATOR",
+    "INEX_CLASSIFIER",
+    "INEX_TEMPERATURE",
+    "INEX_WORKERS",
+    "INEX_RETRIES",
+    "INEX_PROFILE",
+    "OLLAMA_BASE",
+    "INEX_NUM_CTX",
+]
+
 FULL_PROBS = {"Intrinsic": 0.90, "Extrinsic": 0.03, "Not a Bug": 0.04, "Unknown": 0.03}
 
 
